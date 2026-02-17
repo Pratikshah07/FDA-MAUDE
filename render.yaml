@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: maude-processor
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements-dev.txt
+    startCommand: gunicorn -b 0.0.0.0:$PORT app:app --timeout 600 --workers 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GUNICORN_CMD_ARGS
+        value: "--timeout 600 --workers 1"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: TEST_ACCOUNTS_ENABLED
+        value: "True"
+      - key: TEST_USER_EMAIL
+        value: "test@maude.local"
+      - key: TEST_USER_PASSWORD
+        value: "Test12345"
+    healthCheckPath: /login

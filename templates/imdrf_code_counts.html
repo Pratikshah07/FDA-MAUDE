@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMDRF Code Counts | MAUDE Data Processor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #7c3aed;
+            --primary-dark: #5b21b6;
+            --primary-light: #a78bfa;
+            --secondary: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --bg-gradient-start: #7c3aed;
+            --bg-gradient-end: #4338ca;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --border: #e5e7eb;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .nav-menu {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 50px;
+            color: white;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .user-details {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .user-email {
+            font-size: 0.8rem;
+            opacity: 0.9;
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.6rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+
+        .main-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: var(--shadow-lg);
+            padding: 40px;
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-upload-area {
+            border: 3px dashed var(--border);
+            border-radius: 15px;
+            padding: 35px;
+            text-align: center;
+            background: #fafbfc;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--primary);
+            background: #f5f3ff;
+        }
+
+        .file-upload-area.dragover {
+            border-color: var(--primary);
+            background: #ede9fe;
+            transform: scale(1.02);
+        }
+
+        .file-upload-area input[type="file"] {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-icon {
+            font-size: 3.5rem;
+            color: var(--primary);
+            margin-bottom: 12px;
+        }
+
+        .upload-text {
+            font-size: 1.05rem;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .upload-hint {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .file-info {
+            margin-top: 10px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            border: 2px solid var(--primary-light);
+        }
+
+        .file-info.show {
+            display: flex;
+        }
+
+        .file-info .file-icon {
+            font-size: 2.2rem;
+            color: var(--primary);
+        }
+
+        .file-info .file-details {
+            flex: 1;
+        }
+
+        .file-info .file-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .file-info .file-size {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .remove-btn {
+            background: none;
+            border: none;
+            color: var(--error);
+            cursor: pointer;
+            font-size: 1.1rem;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            margin: 20px 0;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        select {
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            font-size: 0.95rem;
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-message {
+            margin-top: 20px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-message.show {
+            display: flex;
+        }
+
+        .status-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .status-info {
+            background: #e0e7ff;
+            color: #3730a3;
+            border: 1px solid #c7d2fe;
+        }
+
+        @media (max-width: 768px) {
+            .top-bar {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .main-card {
+                padding: 25px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <div class="nav-menu">
+                <a href="/" class="nav-btn">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </a>
+                <a href="/imdrf-insights" class="nav-btn">
+                    <i class="fas fa-chart-line"></i>
+                    <span>IMDRF Insights</span>
+                </a>
+                <a href="/txt-to-csv" class="nav-btn">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>TXT to CSV</span>
+                </a>
+                <a href="/csv-viewer" class="nav-btn">
+                    <i class="fas fa-table"></i>
+                    <span>CSV Viewer</span>
+                </a>
+            </div>
+            <div class="user-menu">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name">{{ user.name or user.email.split('@')[0] }}</div>
+                        <div class="user-email">{{ user.email }}</div>
+                    </div>
+                </div>
+                <a href="/logout" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="header">
+            <h1><i class="fas fa-list-ol"></i> IMDRF Code Counts</h1>
+            <p class="subtitle">Upload a cleaned MAUDE file and the IMDRF Annexes A-G file to download code counts with descriptions</p>
+        </div>
+
+        <div class="main-card">
+            <h2 class="section-title">
+                <i class="fas fa-file-upload"></i>
+                Upload Cleaned MAUDE File + IMDRF Annex
+            </h2>
+
+            <form id="countForm" enctype="multipart/form-data">
+                <div class="file-upload-area" id="fileUploadArea">
+                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                    <div class="upload-text">Drag & drop your cleaned file here</div>
+                    <div class="upload-hint">or click to browse (CSV, XLS, XLSX). Level-1 = A02, Level-2 = A0202, Level-3 = A-020202</div>
+                    <input type="file" id="file" name="file" accept=".csv,.xlsx,.xls" required>
+                </div>
+
+                <div class="file-info" id="fileInfo">
+                    <i class="fas fa-file-excel file-icon"></i>
+                    <div class="file-details">
+                        <div class="file-name" id="fileName"></div>
+                        <div class="file-size" id="fileSize"></div>
+                    </div>
+                    <button type="button" class="remove-btn" id="removeFile">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </div>
+
+                <div class="file-upload-area" id="annexUploadArea">
+                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                    <div class="upload-text">Upload IMDRF Annexes A-G consolidated file</div>
+                    <div class="upload-hint">Required for accurate code descriptions (XLSX or XLS)</div>
+                    <input type="file" id="annex" name="annex" accept=".xlsx,.xls" required>
+                </div>
+
+                <div class="file-info" id="annexInfo">
+                    <i class="fas fa-file-excel file-icon"></i>
+                    <div class="file-details">
+                        <div class="file-name" id="annexName"></div>
+                        <div class="file-size" id="annexSize"></div>
+                    </div>
+                    <button type="button" class="remove-btn" id="removeAnnex">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                </div>
+
+                <button type="submit" class="submit-btn" id="downloadBtn">
+                    <i class="fas fa-download"></i>
+                    <span>Download Code Counts</span>
+                </button>
+            </form>
+
+            <div class="status-message" id="statusMessage">
+                <i class="fas fa-info-circle" id="statusIcon"></i>
+                <span id="statusText"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const removeFileBtn = document.getElementById('removeFile');
+        const annexInput = document.getElementById('annex');
+        const annexUploadArea = document.getElementById('annexUploadArea');
+        const annexInfo = document.getElementById('annexInfo');
+        const annexName = document.getElementById('annexName');
+        const annexSize = document.getElementById('annexSize');
+        const removeAnnexBtn = document.getElementById('removeAnnex');
+        const form = document.getElementById('countForm');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const statusText = document.getElementById('statusText');
+        const statusIcon = document.getElementById('statusIcon');
+
+        function showStatus(message, type = 'info') {
+            statusText.textContent = message;
+            statusMessage.classList.remove('status-success', 'status-error', 'status-info');
+            statusMessage.classList.add('show');
+
+            if (type === 'success') {
+                statusMessage.classList.add('status-success');
+                statusIcon.className = 'fas fa-check-circle';
+            } else if (type === 'error') {
+                statusMessage.classList.add('status-error');
+                statusIcon.className = 'fas fa-exclamation-circle';
+            } else {
+                statusMessage.classList.add('status-info');
+                statusIcon.className = 'fas fa-info-circle';
+            }
+        }
+
+        function clearStatus() {
+            statusMessage.classList.remove('show');
+        }
+
+        function formatFileSize(bytes) {
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            if (bytes === 0) return '0 Bytes';
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+        }
+
+        function updateFileInfo(file) {
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.classList.add('show');
+            fileUploadArea.style.display = 'none';
+        }
+
+        function clearFileInfo() {
+            fileInput.value = '';
+            fileInfo.classList.remove('show');
+            fileUploadArea.style.display = 'block';
+        }
+
+        function updateAnnexInfo(file) {
+            annexName.textContent = file.name;
+            annexSize.textContent = formatFileSize(file.size);
+            annexInfo.classList.add('show');
+            annexUploadArea.style.display = 'none';
+        }
+
+        function clearAnnexInfo() {
+            annexInput.value = '';
+            annexInfo.classList.remove('show');
+            annexUploadArea.style.display = 'block';
+        }
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                updateFileInfo(e.target.files[0]);
+                clearStatus();
+            }
+        });
+
+        removeFileBtn.addEventListener('click', () => {
+            clearFileInfo();
+        });
+
+        annexInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                updateAnnexInfo(e.target.files[0]);
+                clearStatus();
+            }
+        });
+
+        removeAnnexBtn.addEventListener('click', () => {
+            clearAnnexInfo();
+        });
+
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                updateFileInfo(e.dataTransfer.files[0]);
+                clearStatus();
+            }
+        });
+
+        annexUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            annexUploadArea.classList.add('dragover');
+        });
+
+        annexUploadArea.addEventListener('dragleave', () => {
+            annexUploadArea.classList.remove('dragover');
+        });
+
+        annexUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            annexUploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                annexInput.files = e.dataTransfer.files;
+                updateAnnexInfo(e.dataTransfer.files[0]);
+                clearStatus();
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!fileInput.files.length) {
+                showStatus('Please select a cleaned MAUDE file to upload.', 'error');
+                return;
+            }
+
+            if (!annexInput.files.length) {
+                showStatus('Please upload the IMDRF Annexes A-G file.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('annex', annexInput.files[0]);
+
+            downloadBtn.disabled = true;
+            showStatus('Generating IMDRF code counts...', 'info');
+
+            try {
+                const response = await fetch('/api/imdrf-counts/download-xlsx', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const contentType = response.headers.get('Content-Type') || '';
+
+                if (!response.ok) {
+                    if (contentType.includes('application/json')) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'Download failed');
+                    }
+                    const errText = await response.text();
+                    throw new Error(errText || 'Download failed');
+                }
+
+                if (contentType.includes('text/html')) {
+                    throw new Error('Session expired or unauthorized. Please log in again.');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'imdrf_code_counts.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+
+                showStatus('Download ready. Your file should begin downloading.', 'success');
+            } catch (err) {
+                showStatus(err.message || 'Something went wrong.', 'error');
+            } finally {
+                downloadBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAUDE Data Processor | FDA Medical Device Analysis</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --primary-light: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --bg-gradient-start: #667eea;
+            --bg-gradient-end: #764ba2;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --border: #e5e7eb;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 40%);
+            pointer-events: none;
+            z-index: 0;
+            animation: gradientShift 15s ease infinite;
+        }
+        
+        @keyframes gradientShift {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.8;
+            }
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            animation: fadeInDown 0.6s ease-out;
+        }
+        
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 50px;
+            color: white;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .user-details {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .user-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        
+        .user-email {
+            font-size: 0.8rem;
+            opacity: 0.9;
+        }
+        
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.6s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .header .icon {
+            font-size: 2.5rem;
+            animation: pulse 2s infinite;
+        }
+        
+        .header .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+        
+        .main-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: var(--shadow-lg);
+            padding: 50px;
+            margin-bottom: 30px;
+            animation: fadeInUp 0.6s ease-out 0.2s both;
+            backdrop-filter: blur(10px);
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .info-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 25px;
+            border-radius: 15px;
+            border: 1px solid var(--border);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .info-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow);
+        }
+        
+        .info-card .icon {
+            font-size: 2rem;
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+        
+        .info-card h3 {
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .info-card p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        
+        .upload-section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 1.3rem;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .file-upload-area {
+            border: 3px dashed var(--border);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: #fafbfc;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .file-upload-area:hover {
+            border-color: var(--primary);
+            background: #f0f7ff;
+        }
+        
+        .file-upload-area.dragover {
+            border-color: var(--primary);
+            background: #e0f2fe;
+            transform: scale(1.02);
+        }
+        
+        .file-upload-area input[type="file"] {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        .upload-icon {
+            font-size: 4rem;
+            color: var(--primary);
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+        
+        .upload-text {
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .upload-hint {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        
+        .file-info {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            display: none;
+            align-items: center;
+            gap: 15px;
+            border: 2px solid var(--primary-light);
+        }
+        
+        .file-info.show {
+            display: flex;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .file-info .file-icon {
+            font-size: 2rem;
+            color: var(--primary);
+        }
+        
+        .file-info .file-details {
+            flex: 1;
+        }
+        
+        .file-info .file-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 5px;
+        }
+        
+        .file-info .file-size {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .file-info .remove-btn {
+            background: var(--error);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+        
+        .file-info .remove-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        
+        .optional-badge {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .submit-btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+        }
+        
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        
+        .submit-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .submit-btn .spinner {
+            display: none;
+            animation: spin 1s linear infinite;
+        }
+        
+        .submit-btn.processing .spinner {
+            display: inline-block;
+        }
+        
+        .status {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 12px;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .status.show {
+            display: block;
+        }
+        
+        .status.info {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            color: #1e40af;
+            border: 2px solid #93c5fd;
+        }
+        
+        .status.error {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            color: #991b1b;
+            border: 2px solid #fca5a5;
+        }
+        
+        .status.success {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            color: #065f46;
+            border: 2px solid #6ee7b7;
+        }
+        
+        .status-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status-icon {
+            font-size: 1.5rem;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .progress-bar.show {
+            display: block;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            animation: shimmer 2s infinite;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .stats-grid.show {
+            display: grid;
+            animation: fadeInUp 0.5s ease;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+        
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+        
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        
+        @keyframes shimmer {
+            0% {
+                background-position: -1000px 0;
+            }
+            100% {
+                background-position: 1000px 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-card {
+                padding: 30px 20px;
+            }
+            
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .user-menu {
+                flex-direction: column;
+                gap: 10px;
+                padding: 15px;
+            }
+            
+            .user-info {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .logout-btn {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .top-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <div class="nav-menu" style="display: flex; gap: 10px;">
+                <a href="/imdrf-insights" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-chart-line"></i>
+                    <span>IMDRF Insights</span>
+                </a>
+                <a href="/imdrf-code-counts" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-list-ol"></i>
+                    <span>IMDRF Code Counts</span>
+                </a>
+                <a href="/txt-to-csv" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>TXT to CSV</span>
+                </a>
+                <a href="/csv-viewer" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-table"></i>
+                    <span>CSV Viewer</span>
+                </a>
+            </div>
+            <div class="user-menu">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name">{{ user.name or user.email.split('@')[0] }}</div>
+                        <div class="user-email">{{ user.email }}</div>
+                    </div>
+                </div>
+                <a href="/logout" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </div>
+        
+        <div class="header">
+            <h1>
+                <i class="fas fa-microscope icon"></i>
+                MAUDE Data Processor
+            </h1>
+            <p class="subtitle">FDA Medical Device Adverse Event Analysis & IMDRF Code Mapping</p>
+        </div>
+        
+        <div class="main-card">
+            <div class="info-grid">
+                <div class="info-card">
+                    <i class="fas fa-broom icon"></i>
+                    <h3>Data Cleaning</h3>
+                    <p>Removes unnecessary columns, standardizes dates, and normalizes manufacturer names</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-code icon"></i>
+                    <h3>IMDRF Mapping</h3>
+                    <p>Hierarchical mapping of device problems to IMDRF codes using Annex A-G structure</p>
+                </div>
+                <div class="info-card">
+                    <i class="fas fa-shield-alt icon"></i>
+                    <h3>Validation</h3>
+                    <p>Comprehensive validation ensures data integrity and regulatory compliance</p>
+                </div>
+            </div>
+            
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="upload-section">
+                    <h2 class="section-title">
+                        <i class="fas fa-file-upload"></i>
+                        Upload MAUDE File
+                    </h2>
+                    
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <div class="upload-text">Drag & drop your file here</div>
+                        <div class="upload-hint">or click to browse (CSV, XLS, XLSX)</div>
+                        <input type="file" id="file" name="file" accept=".csv,.xlsx,.xls" required>
+                    </div>
+                    
+                    <div class="file-info" id="fileInfo">
+                        <i class="fas fa-file-excel file-icon"></i>
+                        <div class="file-details">
+                            <div class="file-name" id="fileName"></div>
+                            <div class="file-size" id="fileSize"></div>
+                        </div>
+                        <button type="button" class="remove-btn" id="removeFile">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="imdrf_file">
+                        <i class="fas fa-book"></i>
+                        IMDRF Annexure File
+                        <span class="optional-badge">Optional</span>
+                    </label>
+                    <div class="file-upload-area" id="imdrfUploadArea" style="padding: 20px;">
+                        <i class="fas fa-file-excel upload-icon" style="font-size: 2.5rem;"></i>
+                        <div class="upload-text">Click to select IMDRF Annex file</div>
+                        <div class="upload-hint">Upload Annexes A-G consolidated file for IMDRF code mapping</div>
+                        <input type="file" id="imdrf_file" name="imdrf_file" accept=".csv,.xlsx,.xls" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer;">
+                    </div>
+                    <div class="file-info" id="imdrfFileInfo">
+                        <i class="fas fa-file-excel file-icon"></i>
+                        <div class="file-details">
+                            <div class="file-name" id="imdrfFileName"></div>
+                            <div class="file-size" id="imdrfFileSize"></div>
+                        </div>
+                        <button type="button" class="remove-btn" id="removeImdrfFile">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    <i class="fas fa-cog spinner"></i>
+                    <span class="btn-text">Process File</span>
+                </button>
+                
+                <div class="progress-bar" id="progressBar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                
+                <div id="status" class="status"></div>
+                
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="statRows">-</div>
+                        <div class="stat-label">Rows Processed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statCols">-</div>
+                        <div class="stat-label">Columns</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statImdrf">-</div>
+                        <div class="stat-label">IMDRF Codes</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statTime">-</div>
+                        <div class="stat-label">Processing Time</div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        const form = document.getElementById('uploadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusDiv = document.getElementById('status');
+        const fileInput = document.getElementById('file');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const removeFileBtn = document.getElementById('removeFile');
+        const imdrfFileInput = document.getElementById('imdrf_file');
+        const imdrfUploadArea = document.getElementById('imdrfUploadArea');
+        const imdrfFileInfo = document.getElementById('imdrfFileInfo');
+        const imdrfFileName = document.getElementById('imdrfFileName');
+        const imdrfFileSize = document.getElementById('imdrfFileSize');
+        const removeImdrfFileBtn = document.getElementById('removeImdrfFile');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const statsGrid = document.getElementById('statsGrid');
+        
+        let startTime = null;
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+        
+        function updateFileInfo(file) {
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.classList.add('show');
+            fileUploadArea.style.display = 'none';
+        }
+        
+        function clearFileInfo() {
+            fileInput.value = '';
+            fileInfo.classList.remove('show');
+            fileUploadArea.style.display = 'block';
+        }
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                updateFileInfo(e.target.files[0]);
+            }
+        });
+        
+        removeFileBtn.addEventListener('click', clearFileInfo);
+        
+        // IMDRF file handlers
+        function updateImdrfFileInfo(file) {
+            imdrfFileName.textContent = file.name;
+            imdrfFileSize.textContent = formatFileSize(file.size);
+            imdrfFileInfo.classList.add('show');
+            imdrfUploadArea.style.display = 'none';
+        }
+        
+        function clearImdrfFileInfo() {
+            imdrfFileInput.value = '';
+            imdrfFileInfo.classList.remove('show');
+            imdrfUploadArea.style.display = 'block';
+        }
+        
+        imdrfFileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                updateImdrfFileInfo(e.target.files[0]);
+            }
+        });
+        
+        removeImdrfFileBtn.addEventListener('click', clearImdrfFileInfo);
+        
+        // Drag and drop for main file
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+        
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+        
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files[0]) {
+                fileInput.files = e.dataTransfer.files;
+                updateFileInfo(e.dataTransfer.files[0]);
+            }
+        });
+        
+        // Drag and drop for IMDRF file
+        imdrfUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            imdrfUploadArea.classList.add('dragover');
+        });
+        
+        imdrfUploadArea.addEventListener('dragleave', () => {
+            imdrfUploadArea.classList.remove('dragover');
+        });
+        
+        imdrfUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            imdrfUploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files[0]) {
+                imdrfFileInput.files = e.dataTransfer.files;
+                updateImdrfFileInfo(e.dataTransfer.files[0]);
+            }
+        });
+        
+        function showStatus(message, type, icon = null) {
+            const iconMap = {
+                info: 'fa-info-circle',
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle'
+            };
+            
+            statusDiv.innerHTML = `
+                <div class="status-content">
+                    <i class="fas ${icon || iconMap[type] || 'fa-info-circle'} status-icon"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            statusDiv.className = `status ${type} show`;
+        }
+        
+        function hideStatus() {
+            statusDiv.className = 'status';
+        }
+        
+        function updateProgress(percent) {
+            progressBar.classList.add('show');
+            progressFill.style.width = percent + '%';
+        }
+
+        let asyncProgress = 5;
+        function updateAsyncProgress() {
+            asyncProgress = Math.min(90, asyncProgress + 5);
+            updateProgress(asyncProgress);
+        }
+        
+        function showStats(stats) {
+            if (stats) {
+                document.getElementById('statRows').textContent = stats.final_rows || '-';
+                document.getElementById('statCols').textContent = stats.final_cols || '-';
+                const imdrfCount = stats.validation?.details?.imdrf_codes_mapped || '-';
+                document.getElementById('statImdrf').textContent = imdrfCount;
+                if (startTime) {
+                    const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    document.getElementById('statTime').textContent = timeElapsed + 's';
+                }
+                statsGrid.classList.add('show');
+            }
+        }
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!fileInput.files[0]) {
+                showStatus('Please select a file to upload', 'error');
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.classList.add('processing');
+            submitBtn.querySelector('.btn-text').textContent = 'Processing...';
+            hideStatus();
+            statsGrid.classList.remove('show');
+            startTime = Date.now();
+            
+            updateProgress(10);
+            
+            const formData = new FormData(form);
+            formData.append('async', '1');
+            
+            try {
+                updateProgress(30);
+                
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                updateProgress(70);
+                
+                // Check Content-Type to ensure we got an Excel file, not HTML (login redirect)
+                const contentType = response.headers.get('Content-Type') || '';
+                const isExcelFile = contentType.includes('spreadsheet') || 
+                                   contentType.includes('excel') || 
+                                   contentType.includes('openxmlformats');
+                
+                if (response.status === 202) {
+                    const payload = await response.json();
+                    const statusUrl = payload.status_url;
+                    const downloadUrl = payload.download_url;
+
+                    showStatus('Processing started. This may take several minutes...', 'info');
+                    asyncProgress = 10;
+                    updateProgress(asyncProgress);
+
+                    const pollInterval = 3000;
+                    const maxAttempts = 200;
+                    let attempts = 0;
+
+                    const poll = async () => {
+                        attempts += 1;
+                        try {
+                            const statusResp = await fetch(statusUrl);
+                            const statusData = await statusResp.json();
+                            if (statusData.status === 'done') {
+                                showStatus('Processing complete. Downloading...', 'success');
+                                const fileResp = await fetch(downloadUrl);
+                                const blob = await fileResp.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                const filename = `cleaned_${fileInput.files[0]?.name?.split('.')[0] || 'output'}.xlsx`;
+                                a.href = url;
+                                a.download = filename;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                                updateProgress(100);
+                                setTimeout(() => {
+                                    updateProgress(0);
+                                    progressBar.classList.remove('show');
+                                }, 2000);
+                                return;
+                            }
+                            if (statusData.status === 'failed') {
+                                showStatus(`Error: ${statusData.error || 'Processing failed'}`, 'error');
+                                updateProgress(0);
+                                progressBar.classList.remove('show');
+                                return;
+                            }
+                            if (statusData.status === 'running' || statusData.status === 'queued') {
+                                updateAsyncProgress();
+                            }
+                            if (attempts < maxAttempts) {
+                                setTimeout(poll, pollInterval);
+                            } else {
+                                showStatus('Error: Processing is taking too long. Please try again.', 'error');
+                                updateProgress(0);
+                                progressBar.classList.remove('show');
+                            }
+                        } catch (error) {
+                            showStatus(`Error: ${error.message}`, 'error');
+                            updateProgress(0);
+                            progressBar.classList.remove('show');
+                        }
+                    };
+
+                    setTimeout(poll, pollInterval);
+                } else if (response.ok && isExcelFile) {
+                    updateProgress(90);
+                    
+                    // Get filename from Content-Disposition header
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'cleaned_output.xlsx';
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+                        if (filenameMatch) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+                    
+                    // Download file
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    updateProgress(100);
+                    
+                    // Try to get stats from response if available
+                    // Note: Since we're downloading a file, we can't easily get JSON stats
+                    // This would require a two-step process or different endpoint
+                    
+                    showStatus('File processed successfully! Download started.', 'success');
+                    
+                    setTimeout(() => {
+                        updateProgress(0);
+                        progressBar.classList.remove('show');
+                    }, 2000);
+                } else if (response.ok && !isExcelFile) {
+                    // Got HTML instead of Excel (likely login redirect)
+                    const text = await response.text();
+                    if (text.includes('login') || text.includes('Login')) {
+                        showStatus('Session expired. Please log in again.', 'error');
+                        setTimeout(() => {
+                            window.location.href = '/login';
+                        }, 2000);
+                    } else {
+                        // Try to parse as JSON error
+                        try {
+                            const error = JSON.parse(text);
+                            showStatus(`Error: ${error.error || 'Processing failed'}`, 'error');
+                        } catch {
+                            showStatus('Error: Received unexpected response. Please try again.', 'error');
+                        }
+                    }
+                    updateProgress(0);
+                    progressBar.classList.remove('show');
+                } else {
+                    // Error response - try to parse JSON
+                    try {
+                        const error = await response.json();
+                        showStatus(`Error: ${error.error || 'Processing failed'}`, 'error');
+                    } catch {
+                        showStatus(`Error: Processing failed (Status: ${response.status})`, 'error');
+                    }
+                    updateProgress(0);
+                    progressBar.classList.remove('show');
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                updateProgress(0);
+                progressBar.classList.remove('show');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('processing');
+                submitBtn.querySelector('.btn-text').textContent = 'Process File';
+            }
+        });
+    </script>
+</body>
+</html>

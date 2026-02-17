@@ -1,0 +1,78 @@
+# Aggressively exclude everything not needed for Flask deployment
+
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+.pytest_cache/
+
+# Streamlit (not used in Vercel deployment)
+streamlit_app.py
+pages/2_Insights.py
+pages/Signal_Dashboard.py
+pages/__pycache__/
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Data and cache files
+cache/
+data/
+uploads/
+*.xlsx
+*.xls
+*.csv
+*.tmp
+*.temp
+tmpclaude-*
+
+# Documentation (keep only essential)
+*.md
+!README.md
+!DEPLOYMENT.md
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Alternative requirement files (only requirements.txt is used)
+requirements-dev.txt
+requirements-minimal.txt
+requirements-vercel.txt
+
+# Development scripts
+run.py
+set_groq_key.ps1
+
+# Other config files not needed
+vercel.json
+.env.local
+.env.*.local
+
+# Tools and engine files
+tools/
+engine.py
+
+# Template files not in use
+templates/insights.html
+
+# Fixes documentation
+FIXES_APPLIED.md
+IMDRF_INSIGHTS_GUIDE.md

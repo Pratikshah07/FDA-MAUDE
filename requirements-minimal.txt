@@ -1,0 +1,18 @@
+# Minimal dependencies for Vercel deployment (core Flask app only)
+# This excludes IMDRF Insights feature to stay under 250MB limit
+
+flask>=3.0.0
+flask-login>=0.6.3
+flask-mail>=0.9.1
+werkzeug>=3.0.1
+bcrypt>=4.1.2
+itsdangerous>=2.1.2
+python-dotenv>=1.0.0
+
+# Essential for MAUDE processing
+pandas==2.0.3
+openpyxl>=3.1.2
+numpy==1.24.3
+
+# Note: IMDRF Insights feature will be disabled on Vercel due to size constraints
+# For full functionality including insights, run locally or use a different platform
