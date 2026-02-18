@@ -13,13 +13,12 @@ from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import requests
 from flask import Flask, request, render_template, send_file, jsonify, redirect, url_for, session, Response, stream_with_context
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
 import tempfile
 import io
 
 from backend.processor import MAUDEProcessor
-from backend.auth import AuthManager, User
+from backend.auth import FirebaseAuthManager, User
 from backend.imdrf_insights import (
     prepare_data_for_insights,
     analyze_imdrf_insights,
@@ -33,10 +32,10 @@ from backend.imdrf_insights import (
 from backend.imdrf_annex_validator import get_annex_status
 from backend.txt_to_csv_converter import TxtToCsvConverter, get_txt_preview
 from backend.csv_viewer import LargeCSVViewer, get_csv_page, get_csv_info
-from config import (
-    GROQ_API_KEY, SECRET_KEY, MAIL_SERVER, MAIL_PORT, MAIL_USE_TLS,
-    MAIL_USE_SSL, MAIL_USERNAME, MAIL_PASSWORD, MAIL_DEFAULT_SENDER
-)
+from config import GROQ_API_KEY, SECRET_KEY, FIREBASE_CONFIG, FIREBASE_SERVICE_ACCOUNT_PATH
+
+# Default IMDRF Annexure file bundled with the project
+DEFAULT_IMDRF_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Annexes A-G consolidated.xlsx')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -61,14 +60,8 @@ PROCESS_JOBS_LOCK = threading.Lock()
 MAUDE_EXPORT_JOBS = {}
 MAUDE_EXPORT_LOCK = threading.Lock()
 
-# Flask-Mail configuration
-app.config['MAIL_SERVER'] = MAIL_SERVER
-app.config['MAIL_PORT'] = MAIL_PORT
-app.config['MAIL_USE_TLS'] = MAIL_USE_TLS
-app.config['MAIL_USE_SSL'] = MAIL_USE_SSL
-app.config['MAIL_USERNAME'] = MAIL_USERNAME
-app.config['MAIL_PASSWORD'] = MAIL_PASSWORD
-app.config['MAIL_DEFAULT_SENDER'] = MAIL_DEFAULT_SENDER
+# Firebase config (available to all templates via context processor)
+app.config['FIREBASE_CONFIG'] = FIREBASE_CONFIG
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -88,19 +81,25 @@ def _handle_unauthorized():
         pass
     return redirect(url_for('login', next=request.path))
 
-# Initialize Flask-Mail
-mail = Mail(app)
-
-# Initialize Auth Manager
-auth_manager = AuthManager(SECRET_KEY)
+# Initialize Firebase Auth Manager
+auth_manager = FirebaseAuthManager(FIREBASE_SERVICE_ACCOUNT_PATH)
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Load user for Flask-Login."""
-    return auth_manager.get_user(user_id)
+    """Load user from Flask session for Flask-Login."""
+    user_data = session.get('firebase_user')
+    if user_data and user_data.get('uid') == user_id:
+        return FirebaseAuthManager.get_user_from_session(user_data)
+    return None
+
+
+@app.context_processor
+def inject_firebase_config():
+    """Make firebase_config available in all templates."""
+    return dict(firebase_config=app.config.get('FIREBASE_CONFIG', {}))
 
 
 def allowed_file(filename):
@@ -209,8 +208,12 @@ def _run_processing_job(job_id, input_path, output_path, output_filename, imdrf_
     try:
         processor = MAUDEProcessor()
 
-        if imdrf_path and os.path.exists(imdrf_path):
-            processor.load_imdrf_structure(imdrf_path)
+        # Use uploaded IMDRF file, or fall back to bundled default
+        annex_path = imdrf_path if (imdrf_path and os.path.exists(imdrf_path)) else DEFAULT_IMDRF_PATH
+        if os.path.exists(annex_path):
+            processor.load_imdrf_structure(annex_path)
+        else:
+            print("WARNING: No IMDRF annex file found. IMDRF codes will be blank.")
 
         stats = processor.process_file(input_path, output_path)
 
@@ -476,66 +479,13 @@ def api_imdrf_counts_download_csv():
                 pass
 
 
-def send_password_reset_email(email: str, token: str):
-    """Send password reset email."""
-    try:
-        reset_url = f"{request.host_url}reset-password?token={token}"
-        
-        msg = Message(
-            subject='MAUDE Data Processor - Password Reset',
-            recipients=[email],
-            html=f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <h2 style="color: #2563eb;">Password Reset Request</h2>
-                    <p>You requested to reset your password for the MAUDE Data Processor.</p>
-                    <p>Click the button below to reset your password:</p>
-                    <div style="text-align: center; margin: 30px 0;">
-                        <a href="{reset_url}" 
-                           style="background: #2563eb; color: white; padding: 12px 30px; 
-                                  text-decoration: none; border-radius: 6px; display: inline-block;">
-                            Reset Password
-                        </a>
-                    </div>
-                    <p style="font-size: 12px; color: #666;">
-                        Or copy and paste this link into your browser:<br>
-                        <a href="{reset_url}" style="color: #2563eb;">{reset_url}</a>
-                    </p>
-                    <p style="font-size: 12px; color: #666;">
-                        This link will expire in 1 hour. If you didn't request this, please ignore this email.
-                    </p>
-                </div>
-            </body>
-            </html>
-            """
-        )
-        mail.send(msg)
-        return True
-    except Exception as e:
-        print(f"Error sending email: {str(e)}")
-        return False
-
-
 # Authentication Routes
 @app.route('/login')
 def login():
     """Render login page."""
     if current_user.is_authenticated:
         return redirect(url_for('index'))
-    # Expose test accounts to the login template when enabled
-    try:
-        from config import TEST_ACCOUNTS_ENABLED, TEST_USER_EMAIL, TEST_USER_PASSWORD
-        test_accounts = []
-        if TEST_ACCOUNTS_ENABLED:
-            test_accounts = [{
-                'email': TEST_USER_EMAIL,
-                'password': TEST_USER_PASSWORD,
-                'label': 'Test Account'
-            }]
-    except Exception:
-        test_accounts = []
-    return render_template('login.html', test_accounts=test_accounts)
+    return render_template('login.html')
 
 
 @app.route('/register')
@@ -552,96 +502,47 @@ def forgot_password():
     return render_template('forgot_password.html')
 
 
-@app.route('/reset-password')
-def reset_password():
-    """Render reset password page."""
-    token = request.args.get('token')
-    if not token:
-        return redirect(url_for('forgot_password'))
-    return render_template('reset_password.html', token=token)
-
-
 @app.route('/logout')
 @login_required
 def logout():
-    """Logout user."""
+    """Logout user and clear Firebase session."""
     logout_user()
+    session.pop('firebase_user', None)
     return redirect(url_for('login'))
 
 
 # API Routes
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    """Handle login API request."""
+@app.route('/api/session-login', methods=['POST'])
+def api_session_login():
+    """Verify Firebase ID token and create Flask session."""
     data = request.get_json()
-    email = data.get('email', '').strip().lower()
-    password = data.get('password', '')
-    
-    if not email or not password:
-        return jsonify({'error': 'Email and password are required'}), 400
-    
-    user = auth_manager.authenticate_user(email, password)
-    if user:
-        login_user(user, remember=True)
-        return jsonify({'success': True, 'message': 'Login successful'}), 200
-    else:
-        return jsonify({'error': 'Invalid email or password'}), 401
+    id_token = data.get('idToken', '')
 
+    if not id_token:
+        return jsonify({'error': 'ID token is required'}), 400
 
-@app.route('/api/register', methods=['POST'])
-def api_register():
-    """Handle registration API request."""
-    data = request.get_json()
-    email = data.get('email', '').strip().lower()
-    password = data.get('password', '')
-    name = data.get('name', '').strip()
-    
-    if not email or not password:
-        return jsonify({'error': 'Email and password are required'}), 400
-    
-    success, message = auth_manager.register_user(email, password, name)
-    if success:
-        return jsonify({'success': True, 'message': message}), 200
-    else:
-        return jsonify({'error': message}), 400
+    user = auth_manager.verify_id_token(id_token)
+    if not user:
+        return jsonify({'error': 'Invalid or expired token'}), 401
 
+    # Store user data in Flask session
+    session['firebase_user'] = {
+        'uid': user.id,
+        'email': user.email,
+        'name': user.name,
+    }
 
-@app.route('/api/forgot-password', methods=['POST'])
-def api_forgot_password():
-    """Handle forgot password API request."""
-    data = request.get_json()
-    email = data.get('email', '').strip().lower()
-    
-    if not email:
-        return jsonify({'error': 'Email is required'}), 400
-    
-    # Always return success to prevent email enumeration
-    if auth_manager.user_exists(email):
-        token = auth_manager.generate_reset_token(email)
-        if token:
-            send_password_reset_email(email, token)
-    
+    # Log in with Flask-Login (sets the session cookie)
+    login_user(user, remember=True)
+
     return jsonify({
         'success': True,
-        'message': 'If an account exists with that email, a password reset link has been sent.'
+        'message': 'Session created',
+        'user': {
+            'email': user.email,
+            'name': user.name,
+        }
     }), 200
-
-
-@app.route('/api/reset-password', methods=['POST'])
-def api_reset_password():
-    """Handle reset password API request."""
-    data = request.get_json()
-    token = data.get('token', '')
-    password = data.get('password', '')
-    
-    if not token or not password:
-        return jsonify({'error': 'Token and password are required'}), 400
-    
-    success, message = auth_manager.reset_password(token, password)
-    if success:
-        return jsonify({'success': True, 'message': message}), 200
-    else:
-        return jsonify({'error': message}), 400
 
 
 # Protected Routes
@@ -714,10 +615,12 @@ def process_file():
         # Sync processing (fallback)
         processor = MAUDEProcessor()
 
-        if imdrf_path and os.path.exists(imdrf_path):
-            processor.load_imdrf_structure(imdrf_path)
+        # Use uploaded IMDRF file, or fall back to bundled default
+        annex_path = imdrf_path if (imdrf_path and os.path.exists(imdrf_path)) else DEFAULT_IMDRF_PATH
+        if os.path.exists(annex_path):
+            processor.load_imdrf_structure(annex_path)
         else:
-            print("WARNING: No IMDRF annex file provided. IMDRF codes will be blank.")
+            print("WARNING: No IMDRF annex file found. IMDRF codes will be blank.")
 
         stats = processor.process_file(input_path, output_path)
         
@@ -2078,10 +1981,5 @@ if __name__ == '__main__':
     # Check for Groq API key
     if not GROQ_API_KEY:
         print("WARNING: GROQ_API_KEY not set. Set it as an environment variable.")
-    
-    # Check for mail configuration
-    if not MAIL_USERNAME or not MAIL_PASSWORD:
-        print("WARNING: Mail credentials not configured. Password recovery emails will not work.")
-        print("Set MAIL_USERNAME and MAIL_PASSWORD environment variables.")
-    
+
     app.run(debug=True, host='0.0.0.0', port=5000)

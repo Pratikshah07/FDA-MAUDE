@@ -26,6 +26,37 @@
             --border: #e5e7eb;
             --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+            --input-bg: #ffffff;
+            --alert-error-bg: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            --alert-error-text: #991b1b;
+            --alert-error-border: #fca5a5;
+            --alert-success-bg: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            --alert-success-text: #065f46;
+            --alert-success-border: #6ee7b7;
+            --alert-info-bg: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            --alert-info-text: #1e40af;
+            --alert-info-border: #93c5fd;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: #1a1a2e;
+            --bg-gradient-end: #16213e;
+            --card-bg: rgba(30, 30, 50, 0.95);
+            --text-primary: #e2e8f0;
+            --text-secondary: #a0aec0;
+            --border: #2d3748;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4);
+            --input-bg: #2d2d4a;
+            --alert-error-bg: linear-gradient(135deg, #3b1a1a 0%, #4a1e1e 100%);
+            --alert-error-text: #fca5a5;
+            --alert-error-border: #7f1d1d;
+            --alert-success-bg: linear-gradient(135deg, #1a3b2a 0%, #1e4a33 100%);
+            --alert-success-text: #6ee7b7;
+            --alert-success-border: #065f46;
+            --alert-info-bg: linear-gradient(135deg, #1a2a3b 0%, #1e334a 100%);
+            --alert-info-text: #93c5fd;
+            --alert-info-border: #1e40af;
         }
         
         body {
@@ -148,7 +179,7 @@
             border-radius: 10px;
             font-size: 0.95rem;
             transition: all 0.3s ease;
-            background: white;
+            background: var(--input-bg);
             color: var(--text-primary);
         }
         
@@ -273,7 +304,42 @@
         .register-link a:hover {
             text-decoration: underline;
         }
-        
+
+        .google-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .google-btn:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.15);
+        }
+
+        .google-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .google-btn img {
+            width: 20px;
+            height: 20px;
+        }
+
         .alert {
             padding: 12px 15px;
             border-radius: 10px;
@@ -288,21 +354,21 @@
         }
         
         .alert.error {
-            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-            color: #991b1b;
-            border: 2px solid #fca5a5;
+            background: var(--alert-error-bg);
+            color: var(--alert-error-text);
+            border: 2px solid var(--alert-error-border);
         }
-        
+
         .alert.success {
-            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-            color: #065f46;
-            border: 2px solid #6ee7b7;
+            background: var(--alert-success-bg);
+            color: var(--alert-success-text);
+            border: 2px solid var(--alert-success-border);
         }
-        
+
         .alert.info {
-            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-            color: #1e40af;
-            border: 2px solid #93c5fd;
+            background: var(--alert-info-bg);
+            color: var(--alert-info-text);
+            border: 2px solid var(--alert-info-border);
         }
         
         .alert-content {
@@ -346,6 +412,30 @@
             }
         }
         
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
         @media (max-width: 480px) {
             body {
                 padding: 10px;
@@ -418,6 +508,10 @@
     </style>
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode">
+        <i class="fas fa-moon" id="themeIcon"></i>
+    </button>
+
     <div class="login-container">
         <div class="logo-section">
             <h1>
@@ -441,7 +535,7 @@
                         <input type="email" id="email" name="email" placeholder="Enter your email" required autocomplete="email">
                     </div>
                 </div>
-                
+
                 <div class="form-group">
                     <label for="password">Password</label>
                     <div class="input-wrapper">
@@ -449,56 +543,43 @@
                         <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
                     </div>
                 </div>
-                
+
                 <div class="forgot-password">
                     <a href="/forgot-password">Forgot Password?</a>
                 </div>
-                
+
                 <button type="submit" class="submit-btn" id="submitBtn">
                     <span id="btnText">Sign In</span>
                 </button>
             </form>
 
-            <!-- Test accounts (rendered only if provided by the server) -->
-            {% if test_accounts %}
             <div class="divider">or</div>
-            <div class="test-accounts" style="margin-top:16px;">
-                <h3 style="text-align:center; color:var(--text-secondary); font-size:0.9rem; margin-bottom:8px;">Test Accounts</h3>
-                {% for acc in test_accounts %}
-                <div class="test-account" style="display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:8px;">
-                    <div style="font-size:0.9rem; color:var(--text-primary);">
-                        <strong>{{ acc.email }}</strong>
-                        <span style="color:var(--text-secondary);"> / </span>
-                        <em style="color:var(--text-secondary);">{{ acc.password }}</em>
-                    </div>
-                    <div>
-                        <button class="submit-btn" style="padding:8px 12px; font-size:0.9rem;" type="button" data-email="{{ acc.email }}" data-password="{{ acc.password }}" aria-label="Login as {{ acc.email }}">Login</button>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="divider">or</div>
+            <button type="button" id="googleSignInBtn" class="google-btn">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+                Sign in with Google
+            </button>
             <div class="register-link">
                 Don't have an account? <a href="/register">Sign up</a>
             </div>
-            {% endif %}
         </div>
     </div>
     
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script>
+        firebase.initializeApp({{ firebase_config | tojson }});
+
         const form = document.getElementById('loginForm');
         const submitBtn = document.getElementById('submitBtn');
         const btnText = document.getElementById('btnText');
         const alertDiv = document.getElementById('alert');
-        
+
         function showAlert(message, type) {
             const iconMap = {
                 error: 'fa-exclamation-circle',
                 success: 'fa-check-circle',
                 info: 'fa-info-circle'
             };
-            
             alertDiv.innerHTML = `
                 <div class="alert-content">
                     <i class="fas ${iconMap[type] || 'fa-info-circle'}"></i>
@@ -506,89 +587,92 @@
                 </div>
             `;
             alertDiv.className = `alert ${type} show`;
-            
             if (type === 'success') {
-                setTimeout(() => {
-                    window.location.href = '/';
-                }, 1000);
+                setTimeout(() => { window.location.href = '/'; }, 1000);
             }
         }
-        
+
+        const FIREBASE_ERRORS = {
+            'auth/user-not-found': 'No account found with this email',
+            'auth/wrong-password': 'Invalid password',
+            'auth/invalid-email': 'Invalid email format',
+            'auth/too-many-requests': 'Too many attempts. Please try again later.',
+            'auth/invalid-credential': 'Invalid email or password',
+        };
+
+        async function createSession(idToken) {
+            const response = await fetch('/api/session-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                showAlert('Login successful! Redirecting...', 'success');
+            } else {
+                showAlert(data.error || 'Session creation failed', 'error');
+            }
+            return response.ok;
+        }
+
+        // Email/Password sign-in
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const formData = new FormData(form);
-            const email = formData.get('email');
-            const password = formData.get('password');
-            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
             submitBtn.disabled = true;
             btnText.textContent = 'Signing in...';
-            
+
             try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ email, password })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    showAlert('Login successful! Redirecting...', 'success');
-                } else {
-                    showAlert(data.error || 'Invalid email or password', 'error');
+                const userCredential = await firebase.auth().signInWithEmailAndPassword(email, password);
+                const idToken = await userCredential.user.getIdToken();
+                const ok = await createSession(idToken);
+                if (!ok) {
                     submitBtn.disabled = false;
                     btnText.textContent = 'Sign In';
                 }
             } catch (error) {
-                showAlert('Network error. Please try again.', 'error');
+                const msg = FIREBASE_ERRORS[error.code] || error.message || 'Login failed';
+                showAlert(msg, 'error');
                 submitBtn.disabled = false;
                 btnText.textContent = 'Sign In';
             }
         });
 
-        // Auto-login handler for Test Accounts buttons
-        document.querySelectorAll('.test-account button[type="button"]').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const email = btn.dataset.email;
-                const password = btn.dataset.password;
-
-                if (!email || !password) {
-                    showAlert('Test account not configured correctly.', 'error');
-                    return;
+        // Google sign-in
+        document.getElementById('googleSignInBtn').addEventListener('click', async () => {
+            const googleBtn = document.getElementById('googleSignInBtn');
+            googleBtn.disabled = true;
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                const result = await firebase.auth().signInWithPopup(provider);
+                const idToken = await result.user.getIdToken();
+                const ok = await createSession(idToken);
+                if (!ok) googleBtn.disabled = false;
+            } catch (error) {
+                if (error.code !== 'auth/popup-closed-by-user') {
+                    showAlert(error.message || 'Google sign-in failed', 'error');
                 }
-
-                // Disable all login controls
-                btn.disabled = true;
-                submitBtn.disabled = true;
-                btnText.textContent = 'Signing in...';
-
-                try {
-                    const response = await fetch('/api/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email, password })
-                    });
-
-                    const data = await response.json();
-                    if (response.ok) {
-                        showAlert('Login successful! Redirecting...', 'success');
-                    } else {
-                        showAlert(data.error || 'Auto-login failed', 'error');
-                        btn.disabled = false;
-                        submitBtn.disabled = false;
-                        btnText.textContent = 'Sign In';
-                    }
-                } catch (err) {
-                    showAlert('Network error during auto-login. Please try again.', 'error');
-                    btn.disabled = false;
-                    submitBtn.disabled = false;
-                    btnText.textContent = 'Sign In';
-                }
-            });
+                googleBtn.disabled = false;
+            }
         });
+    </script>
+
+    <script>
+        (function() {
+            const saved = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+            const icon = document.getElementById('themeIcon');
+            if (icon) icon.className = saved === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            document.getElementById('themeToggle').addEventListener('click', function() {
+                const current = document.documentElement.getAttribute('data-theme');
+                const next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                document.getElementById('themeIcon').className = next === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            });
+        })();
     </script>
 </body>
 </html>

@@ -26,6 +26,37 @@
             --border: #e5e7eb;
             --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+            --input-bg: #ffffff;
+            --disabled-bg: #9ca3af;
+            --alert-error-bg-start: #fee2e2;
+            --alert-error-bg-end: #fecaca;
+            --alert-error-text: #991b1b;
+            --alert-error-border: #fca5a5;
+            --alert-success-bg-start: #d1fae5;
+            --alert-success-bg-end: #a7f3d0;
+            --alert-success-text: #065f46;
+            --alert-success-border: #6ee7b7;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: #1a1a2e;
+            --bg-gradient-end: #16213e;
+            --card-bg: rgba(30, 30, 50, 0.95);
+            --text-primary: #e2e8f0;
+            --text-secondary: #a0aec0;
+            --border: #2d3748;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4);
+            --input-bg: #2d3748;
+            --disabled-bg: #4a5568;
+            --alert-error-bg-start: #742a2a;
+            --alert-error-bg-end: #63171b;
+            --alert-error-text: #feb2b2;
+            --alert-error-border: #9b2c2c;
+            --alert-success-bg-start: #22543d;
+            --alert-success-bg-end: #1c4532;
+            --alert-success-text: #9ae6b4;
+            --alert-success-border: #276749;
         }
         
         body {
@@ -147,7 +178,7 @@
             border-radius: 10px;
             font-size: 0.95rem;
             transition: all 0.3s ease;
-            background: white;
+            background: var(--input-bg);
             color: var(--text-primary);
         }
         
@@ -212,7 +243,7 @@
         }
         
         .submit-btn:disabled {
-            background: #9ca3af;
+            background: var(--disabled-bg);
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
@@ -235,7 +266,63 @@
         .login-link a:hover {
             text-decoration: underline;
         }
-        
+
+        .divider {
+            text-align: center;
+            margin: 18px 0;
+            position: relative;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 45%;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .divider::before { left: 0; }
+        .divider::after { right: 0; }
+
+        .google-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .google-btn:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.15);
+        }
+
+        .google-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .google-btn img {
+            width: 20px;
+            height: 20px;
+        }
+
         .alert {
             padding: 14px 18px;
             border-radius: 12px;
@@ -249,15 +336,15 @@
         }
         
         .alert.error {
-            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-            color: #991b1b;
-            border: 2px solid #fca5a5;
+            background: linear-gradient(135deg, var(--alert-error-bg-start) 0%, var(--alert-error-bg-end) 100%);
+            color: var(--alert-error-text);
+            border: 2px solid var(--alert-error-border);
         }
         
         .alert.success {
-            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-            color: #065f46;
-            border: 2px solid #6ee7b7;
+            background: linear-gradient(135deg, var(--alert-success-bg-start) 0%, var(--alert-success-bg-end) 100%);
+            color: var(--alert-success-text);
+            border: 2px solid var(--alert-success-border);
         }
         
         .alert-content {
@@ -301,6 +388,30 @@
             }
         }
         
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
         @media (max-width: 480px) {
             body {
                 padding: 10px;
@@ -335,6 +446,9 @@
     </style>
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode">
+        <i class="fas fa-moon" id="themeIcon"></i>
+    </button>
     <div class="register-container">
         <div class="logo-section">
             <h1>
@@ -388,26 +502,35 @@
                     <span id="btnText">Create Account</span>
                 </button>
             </form>
-            
+
+            <div class="divider">or</div>
+            <button type="button" id="googleSignUpBtn" class="google-btn">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+                Sign up with Google
+            </button>
+
             <div class="login-link">
                 Already have an account? <a href="/login">Sign in</a>
             </div>
         </div>
     </div>
     
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script>
+        firebase.initializeApp({{ firebase_config | tojson }});
+
         const form = document.getElementById('registerForm');
         const submitBtn = document.getElementById('submitBtn');
         const btnText = document.getElementById('btnText');
         const alertDiv = document.getElementById('alert');
-        
+
         function showAlert(message, type) {
             const iconMap = {
                 error: 'fa-exclamation-circle',
                 success: 'fa-check-circle',
                 info: 'fa-info-circle'
             };
-            
             alertDiv.innerHTML = `
                 <div class="alert-content">
                     <i class="fas ${iconMap[type] || 'fa-info-circle'}"></i>
@@ -415,61 +538,101 @@
                 </div>
             `;
             alertDiv.className = `alert ${type} show`;
-            
             if (type === 'success') {
-                setTimeout(() => {
-                    window.location.href = '/login';
-                }, 2000);
+                setTimeout(() => { window.location.href = '/'; }, 1000);
             }
         }
-        
+
+        const FIREBASE_ERRORS = {
+            'auth/email-already-in-use': 'An account with this email already exists',
+            'auth/weak-password': 'Password is too weak (min 6 characters)',
+            'auth/invalid-email': 'Invalid email format',
+        };
+
+        async function createSession(idToken) {
+            const response = await fetch('/api/session-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                showAlert('Account created! Redirecting...', 'success');
+            } else {
+                showAlert(data.error || 'Session creation failed', 'error');
+            }
+            return response.ok;
+        }
+
+        // Email/Password registration
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const formData = new FormData(form);
-            const name = formData.get('name');
-            const email = formData.get('email');
-            const password = formData.get('password');
-            const confirmPassword = formData.get('confirm_password');
-            
-            // Client-side validation
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+
             if (password !== confirmPassword) {
                 showAlert('Passwords do not match', 'error');
                 return;
             }
-            
             if (password.length < 8) {
                 showAlert('Password must be at least 8 characters long', 'error');
                 return;
             }
-            
+
             submitBtn.disabled = true;
             btnText.textContent = 'Creating account...';
-            
+
             try {
-                const response = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ name, email, password })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    showAlert('Account created successfully! Redirecting to login...', 'success');
-                } else {
-                    showAlert(data.error || 'Registration failed', 'error');
+                const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
+                await userCredential.user.updateProfile({ displayName: name });
+                const idToken = await userCredential.user.getIdToken(true);
+                const ok = await createSession(idToken);
+                if (!ok) {
                     submitBtn.disabled = false;
                     btnText.textContent = 'Create Account';
                 }
             } catch (error) {
-                showAlert('Network error. Please try again.', 'error');
+                const msg = FIREBASE_ERRORS[error.code] || error.message || 'Registration failed';
+                showAlert(msg, 'error');
                 submitBtn.disabled = false;
                 btnText.textContent = 'Create Account';
             }
         });
+
+        // Google sign-up
+        document.getElementById('googleSignUpBtn').addEventListener('click', async () => {
+            const googleBtn = document.getElementById('googleSignUpBtn');
+            googleBtn.disabled = true;
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                const result = await firebase.auth().signInWithPopup(provider);
+                const idToken = await result.user.getIdToken();
+                const ok = await createSession(idToken);
+                if (!ok) googleBtn.disabled = false;
+            } catch (error) {
+                if (error.code !== 'auth/popup-closed-by-user') {
+                    showAlert(error.message || 'Google sign-up failed', 'error');
+                }
+                googleBtn.disabled = false;
+            }
+        });
+    </script>
+    <script>
+        (function() {
+            const saved = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+            const icon = document.getElementById('themeIcon');
+            if (icon) icon.className = saved === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            document.getElementById('themeToggle').addEventListener('click', function() {
+                const current = document.documentElement.getAttribute('data-theme');
+                const next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                document.getElementById('themeIcon').className = next === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            });
+        })();
     </script>
 </body>
 </html>

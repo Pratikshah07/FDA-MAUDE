@@ -27,6 +27,47 @@
             --border: #e5e7eb;
             --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+            --input-bg: #ffffff;
+            --info-card-bg: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            --upload-bg: #fafbfc;
+            --upload-hover-bg: #f0f7ff;
+            --upload-dragover-bg: #e0f2fe;
+            --stat-card-bg: #ffffff;
+            --status-info-bg: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            --status-info-color: #1e40af;
+            --status-info-border: #93c5fd;
+            --status-error-bg: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            --status-error-color: #991b1b;
+            --status-error-border: #fca5a5;
+            --status-success-bg: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            --status-success-color: #065f46;
+            --status-success-border: #6ee7b7;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: #1a1a2e;
+            --bg-gradient-end: #16213e;
+            --card-bg: rgba(30, 30, 50, 0.95);
+            --text-primary: #e2e8f0;
+            --text-secondary: #a0aec0;
+            --border: #2d3748;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4);
+            --input-bg: #2d2d44;
+            --info-card-bg: linear-gradient(135deg, #1e1e36 0%, #2a2a4a 100%);
+            --upload-bg: #1e1e36;
+            --upload-hover-bg: #252545;
+            --upload-dragover-bg: #2a2a5a;
+            --stat-card-bg: #1e1e36;
+            --status-info-bg: linear-gradient(135deg, #1e3a5f 0%, #1e3050 100%);
+            --status-info-color: #93c5fd;
+            --status-info-border: #2563eb;
+            --status-error-bg: linear-gradient(135deg, #4a1a1a 0%, #5a2020 100%);
+            --status-error-color: #fca5a5;
+            --status-error-border: #ef4444;
+            --status-success-bg: linear-gradient(135deg, #1a3a2a 0%, #1a4a30 100%);
+            --status-success-color: #6ee7b7;
+            --status-success-border: #10b981;
         }
         
         body {
@@ -190,7 +231,7 @@
         }
         
         .info-card {
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            background: var(--info-card-bg);
             padding: 25px;
             border-radius: 15px;
             border: 1px solid var(--border);
@@ -240,21 +281,21 @@
             border-radius: 15px;
             padding: 40px;
             text-align: center;
-            background: #fafbfc;
+            background: var(--upload-bg);
             transition: all 0.3s ease;
             cursor: pointer;
             position: relative;
             overflow: hidden;
         }
-        
+
         .file-upload-area:hover {
             border-color: var(--primary);
-            background: #f0f7ff;
+            background: var(--upload-hover-bg);
         }
-        
+
         .file-upload-area.dragover {
             border-color: var(--primary);
-            background: #e0f2fe;
+            background: var(--upload-dragover-bg);
             transform: scale(1.02);
         }
         
@@ -290,7 +331,7 @@
         .file-info {
             margin-top: 15px;
             padding: 15px;
-            background: white;
+            background: var(--input-bg);
             border-radius: 10px;
             display: none;
             align-items: center;
@@ -440,21 +481,21 @@
         }
         
         .status.info {
-            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-            color: #1e40af;
-            border: 2px solid #93c5fd;
+            background: var(--status-info-bg);
+            color: var(--status-info-color);
+            border: 2px solid var(--status-info-border);
         }
-        
+
         .status.error {
-            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-            color: #991b1b;
-            border: 2px solid #fca5a5;
+            background: var(--status-error-bg);
+            color: var(--status-error-color);
+            border: 2px solid var(--status-error-border);
         }
-        
+
         .status.success {
-            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-            color: #065f46;
-            border: 2px solid #6ee7b7;
+            background: var(--status-success-bg);
+            color: var(--status-success-color);
+            border: 2px solid var(--status-success-border);
         }
         
         .status-content {
@@ -503,7 +544,7 @@
         }
         
         .stat-card {
-            background: white;
+            background: var(--stat-card-bg);
             padding: 20px;
             border-radius: 12px;
             text-align: center;
@@ -592,6 +633,26 @@
             }
         }
         
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2rem;
@@ -659,13 +720,16 @@
                         <div class="user-email">{{ user.email }}</div>
                     </div>
                 </div>
-                <a href="/logout" class="logout-btn">
+                <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+                <a href="#" class="logout-btn" id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Logout</span>
                 </a>
             </div>
         </div>
-        
+
         <div class="header">
             <h1>
                 <i class="fas fa-microscope icon"></i>
@@ -719,27 +783,10 @@
                     </div>
                 </div>
                 
-                <div class="form-group">
-                    <label for="imdrf_file">
-                        <i class="fas fa-book"></i>
-                        IMDRF Annexure File
-                        <span class="optional-badge">Optional</span>
-                    </label>
-                    <div class="file-upload-area" id="imdrfUploadArea" style="padding: 20px;">
-                        <i class="fas fa-file-excel upload-icon" style="font-size: 2.5rem;"></i>
-                        <div class="upload-text">Click to select IMDRF Annex file</div>
-                        <div class="upload-hint">Upload Annexes A-G consolidated file for IMDRF code mapping</div>
-                        <input type="file" id="imdrf_file" name="imdrf_file" accept=".csv,.xlsx,.xls" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer;">
-                    </div>
-                    <div class="file-info" id="imdrfFileInfo">
-                        <i class="fas fa-file-excel file-icon"></i>
-                        <div class="file-details">
-                            <div class="file-name" id="imdrfFileName"></div>
-                            <div class="file-size" id="imdrfFileSize"></div>
-                        </div>
-                        <button type="button" class="remove-btn" id="removeImdrfFile">
-                            <i class="fas fa-times"></i>
-                        </button>
+                <div class="form-group" style="margin-top: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 8px;">
+                        <i class="fas fa-check-circle" style="color: #4CAF50;"></i>
+                        <span style="font-size: 0.9rem; color: #b0b0b0;">IMDRF Annexure file loaded automatically</span>
                     </div>
                 </div>
                 
@@ -786,12 +833,6 @@
         const fileName = document.getElementById('fileName');
         const fileSize = document.getElementById('fileSize');
         const removeFileBtn = document.getElementById('removeFile');
-        const imdrfFileInput = document.getElementById('imdrf_file');
-        const imdrfUploadArea = document.getElementById('imdrfUploadArea');
-        const imdrfFileInfo = document.getElementById('imdrfFileInfo');
-        const imdrfFileName = document.getElementById('imdrfFileName');
-        const imdrfFileSize = document.getElementById('imdrfFileSize');
-        const removeImdrfFileBtn = document.getElementById('removeImdrfFile');
         const progressBar = document.getElementById('progressBar');
         const progressFill = document.getElementById('progressFill');
         const statsGrid = document.getElementById('statsGrid');
@@ -827,27 +868,6 @@
         
         removeFileBtn.addEventListener('click', clearFileInfo);
         
-        // IMDRF file handlers
-        function updateImdrfFileInfo(file) {
-            imdrfFileName.textContent = file.name;
-            imdrfFileSize.textContent = formatFileSize(file.size);
-            imdrfFileInfo.classList.add('show');
-            imdrfUploadArea.style.display = 'none';
-        }
-        
-        function clearImdrfFileInfo() {
-            imdrfFileInput.value = '';
-            imdrfFileInfo.classList.remove('show');
-            imdrfUploadArea.style.display = 'block';
-        }
-        
-        imdrfFileInput.addEventListener('change', (e) => {
-            if (e.target.files[0]) {
-                updateImdrfFileInfo(e.target.files[0]);
-            }
-        });
-        
-        removeImdrfFileBtn.addEventListener('click', clearImdrfFileInfo);
         
         // Drag and drop for main file
         fileUploadArea.addEventListener('dragover', (e) => {
@@ -867,26 +887,7 @@
                 updateFileInfo(e.dataTransfer.files[0]);
             }
         });
-        
-        // Drag and drop for IMDRF file
-        imdrfUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            imdrfUploadArea.classList.add('dragover');
-        });
-        
-        imdrfUploadArea.addEventListener('dragleave', () => {
-            imdrfUploadArea.classList.remove('dragover');
-        });
-        
-        imdrfUploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            imdrfUploadArea.classList.remove('dragover');
-            if (e.dataTransfer.files[0]) {
-                imdrfFileInput.files = e.dataTransfer.files;
-                updateImdrfFileInfo(e.dataTransfer.files[0]);
-            }
-        });
-        
+
         function showStatus(message, type, icon = null) {
             const iconMap = {
                 info: 'fa-info-circle',
@@ -1000,6 +1001,7 @@
                                 window.URL.revokeObjectURL(url);
                                 document.body.removeChild(a);
                                 updateProgress(100);
+                                showStatus('File processed and downloaded successfully!', 'success');
                                 setTimeout(() => {
                                     updateProgress(0);
                                     progressBar.classList.remove('show');
@@ -1106,6 +1108,33 @@
                 submitBtn.querySelector('.btn-text').textContent = 'Process File';
             }
         });
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script>
+        firebase.initializeApp({{ firebase_config | tojson }});
+        document.getElementById('logoutBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            firebase.auth().signOut().finally(function() {
+                window.location.href = '/logout';
+            });
+        });
+    </script>
+    <script>
+        (function() {
+            const saved = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+            const icon = document.getElementById('themeIcon');
+            if (icon) icon.className = saved === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+
+            document.getElementById('themeToggle').addEventListener('click', function() {
+                const current = document.documentElement.getAttribute('data-theme');
+                const next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                document.getElementById('themeIcon').className = next === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            });
+        })();
     </script>
 </body>
 </html>

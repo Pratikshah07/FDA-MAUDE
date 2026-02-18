@@ -28,6 +28,61 @@
             --border: #e5e7eb;
             --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+            --input-bg: #ffffff;
+            --upload-bg: #fafbfc;
+            --upload-hover-bg: #f5f3ff;
+            --upload-dragover-bg: #ede9fe;
+            --accent-bg: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+            --accent-border: #c4b5fd;
+            --scrollbar-track: #f1f1f1;
+            --table-hover: #f9fafb;
+            --table-even: #fafbfc;
+            --table-even-hover: #f3f4f6;
+            --row-number-bg: #f3f4f6;
+            --btn-disabled: #d1d5db;
+            --status-success-bg: #d1fae5;
+            --status-success-text: #065f46;
+            --status-success-border: #6ee7b7;
+            --status-error-bg: #fee2e2;
+            --status-error-text: #991b1b;
+            --status-error-border: #fca5a5;
+            --status-info-bg: #dbeafe;
+            --status-info-text: #1e40af;
+            --status-info-border: #93c5fd;
+            --modal-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: #1a1a2e;
+            --bg-gradient-end: #16213e;
+            --card-bg: rgba(30, 30, 50, 0.95);
+            --text-primary: #e2e8f0;
+            --text-secondary: #a0aec0;
+            --border: #2d3748;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4);
+            --input-bg: #2d2d44;
+            --upload-bg: #1e1e35;
+            --upload-hover-bg: #2a2447;
+            --upload-dragover-bg: #322952;
+            --accent-bg: linear-gradient(135deg, #2a2447 0%, #322952 100%);
+            --accent-border: #5b4a8a;
+            --scrollbar-track: #2d2d44;
+            --table-hover: #262640;
+            --table-even: #1e1e35;
+            --table-even-hover: #2a2a45;
+            --row-number-bg: #252540;
+            --btn-disabled: #4a5568;
+            --status-success-bg: #1a3a2a;
+            --status-success-text: #68d391;
+            --status-success-border: #2f6b4a;
+            --status-error-bg: #3a1a1a;
+            --status-error-text: #fc8181;
+            --status-error-border: #6b2f2f;
+            --status-info-bg: #1a2a3a;
+            --status-info-text: #63b3ed;
+            --status-info-border: #2f4a6b;
+            --modal-bg: #1e1e35;
         }
 
         body {
@@ -150,7 +205,7 @@
             border-radius: 15px;
             padding: 40px;
             text-align: center;
-            background: #fafbfc;
+            background: var(--upload-bg);
             transition: all 0.3s ease;
             cursor: pointer;
             position: relative;
@@ -159,12 +214,12 @@
 
         .file-upload-area:hover {
             border-color: var(--primary);
-            background: #f5f3ff;
+            background: var(--upload-hover-bg);
         }
 
         .file-upload-area.dragover {
             border-color: var(--primary);
-            background: #ede9fe;
+            background: var(--upload-dragover-bg);
             transform: scale(1.02);
         }
 
@@ -198,13 +253,13 @@
 
         .file-info-bar {
             display: none;
-            background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+            background: var(--accent-bg);
             padding: 15px 20px;
             border-radius: 12px;
             margin-bottom: 20px;
             align-items: center;
             gap: 15px;
-            border: 1px solid #c4b5fd;
+            border: 1px solid var(--accent-border);
         }
 
         .file-info-bar.show {
@@ -260,7 +315,7 @@
             border: 1px solid var(--border);
             border-bottom: none;
             border-radius: 12px 12px 0 0;
-            background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+            background: var(--accent-bg);
         }
 
         .top-scroll-content {
@@ -284,7 +339,7 @@
 
         .top-scroll-container::-webkit-scrollbar-track,
         .table-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
+            background: var(--scrollbar-track);
             border-radius: 6px;
         }
 
@@ -303,10 +358,11 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 0.85rem;
+            color: var(--text-primary);
         }
 
         .data-table th {
-            background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+            background: var(--accent-bg);
             padding: 12px 15px;
             text-align: left;
             font-weight: 600;
@@ -333,21 +389,21 @@
         }
 
         .data-table tr:hover {
-            background: #f9fafb;
+            background: var(--table-hover);
         }
 
         .data-table tr:nth-child(even) {
-            background: #fafbfc;
+            background: var(--table-even);
         }
 
         .data-table tr:nth-child(even):hover {
-            background: #f3f4f6;
+            background: var(--table-even-hover);
         }
 
         .row-number {
             color: var(--text-secondary);
             font-weight: 500;
-            background: #f3f4f6 !important;
+            background: var(--row-number-bg) !important;
             text-align: center;
             min-width: 60px;
         }
@@ -396,7 +452,7 @@
         }
 
         .page-btn:disabled {
-            background: #d1d5db;
+            background: var(--btn-disabled);
             cursor: not-allowed;
         }
 
@@ -404,6 +460,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            color: var(--text-primary);
         }
 
         .page-input {
@@ -413,6 +470,8 @@
             border-radius: 8px;
             text-align: center;
             font-size: 0.9rem;
+            background: var(--input-bg);
+            color: var(--text-primary);
         }
 
         .page-input:focus {
@@ -426,6 +485,8 @@
             border-radius: 8px;
             font-size: 0.9rem;
             cursor: pointer;
+            background: var(--input-bg);
+            color: var(--text-primary);
         }
 
         /* Search */
@@ -445,6 +506,8 @@
             border: 2px solid var(--border);
             border-radius: 10px;
             font-size: 1rem;
+            background: var(--input-bg);
+            color: var(--text-primary);
         }
 
         .search-input:focus {
@@ -488,10 +551,11 @@
         }
 
         .loading-box {
-            background: white;
+            background: var(--modal-bg);
             padding: 30px 50px;
             border-radius: 15px;
             text-align: center;
+            color: var(--text-primary);
         }
 
         .spinner-large {
@@ -520,21 +584,21 @@
         }
 
         .status.success {
-            background: #d1fae5;
-            color: #065f46;
-            border: 2px solid #6ee7b7;
+            background: var(--status-success-bg);
+            color: var(--status-success-text);
+            border: 2px solid var(--status-success-border);
         }
 
         .status.error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 2px solid #fca5a5;
+            background: var(--status-error-bg);
+            color: var(--status-error-text);
+            border: 2px solid var(--status-error-border);
         }
 
         .status.info {
-            background: #dbeafe;
-            color: #1e40af;
-            border: 2px solid #93c5fd;
+            background: var(--status-info-bg);
+            color: var(--status-info-text);
+            border: 2px solid var(--status-info-border);
         }
 
         /* Column Stats Modal */
@@ -556,7 +620,7 @@
         }
 
         .modal-content {
-            background: white;
+            background: var(--modal-bg);
             padding: 30px;
             border-radius: 15px;
             max-width: 500px;
@@ -575,6 +639,7 @@
         .modal-title {
             font-size: 1.3rem;
             font-weight: 600;
+            color: var(--text-primary);
         }
 
         .modal-close {
@@ -599,6 +664,26 @@
         .stat-value {
             font-weight: 600;
             color: var(--text-primary);
+        }
+
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
         }
 
         @media (max-width: 768px) {
@@ -655,7 +740,10 @@
             </div>
             <div class="user-menu">
                 <span>{{ user.email }}</span>
-                <a href="/logout" class="logout-btn">
+                <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+                <a href="#" class="logout-btn" id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Logout</span>
                 </a>
@@ -1238,6 +1326,34 @@
             searchInput.value = '';
             hideStatus();
         }
+    </script>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script>
+        firebase.initializeApp({{ firebase_config | tojson }});
+        document.getElementById('logoutBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            firebase.auth().signOut().finally(function() {
+                window.location.href = '/logout';
+            });
+        });
+    </script>
+    <script>
+        (function() {
+            const saved = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+            const icon = document.getElementById('themeIcon');
+            if (icon) icon.className = saved === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+
+            document.getElementById('themeToggle').addEventListener('click', function() {
+                const current = document.documentElement.getAttribute('data-theme');
+                const next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                document.getElementById('themeIcon').className = next === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            });
+        })();
     </script>
 </body>
 </html>

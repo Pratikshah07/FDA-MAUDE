@@ -69,6 +69,9 @@ cache/
 secrets.json
 config_local.py
 
+# Firebase service account key - NEVER commit this
+firebase-service-account.json
+
 # User data
 data/users.json
 data/reset_tokens.json

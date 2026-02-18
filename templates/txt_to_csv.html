@@ -28,6 +28,73 @@
             --border: #e5e7eb;
             --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+            --input-bg: #ffffff;
+            --upload-bg: #fafbfc;
+            --upload-hover-bg: #f0fdf4;
+            --upload-dragover-bg: #dcfce7;
+            --stat-bg: #f8fafc;
+            --info-card-start: #f0fdf4;
+            --info-card-end: #dcfce7;
+            --info-card-border: #bbf7d0;
+            --progress-bar-bg: #e5e7eb;
+            --status-success-bg: #d1fae5;
+            --status-success-color: #065f46;
+            --status-success-border: #6ee7b7;
+            --status-error-bg: #fee2e2;
+            --status-error-color: #991b1b;
+            --status-error-border: #fca5a5;
+            --status-info-bg: #dbeafe;
+            --status-info-color: #1e40af;
+            --status-info-border: #93c5fd;
+            --result-warning-start: #fefce8;
+            --result-warning-end: #fef9c3;
+            --result-warning-border: #fde047;
+            --result-warning-color: #ca8a04;
+            --disabled-bg: #9ca3af;
+            --error-list-bg: #fef2f2;
+            --error-list-border: #fecaca;
+            --error-list-heading: #991b1b;
+            --error-list-text: #7f1d1d;
+            --download-hover-bg: #1d4ed8;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: #1a1a2e;
+            --bg-gradient-end: #16213e;
+            --card-bg: rgba(30, 30, 50, 0.95);
+            --text-primary: #e2e8f0;
+            --text-secondary: #a0aec0;
+            --border: #2d3748;
+            --shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4);
+            --input-bg: #2d2d44;
+            --upload-bg: #1e1e35;
+            --upload-hover-bg: #1a2e1a;
+            --upload-dragover-bg: #1a3a1a;
+            --stat-bg: #1e1e35;
+            --info-card-start: #1a2e1a;
+            --info-card-end: #162616;
+            --info-card-border: #2d5a2d;
+            --progress-bar-bg: #2d3748;
+            --status-success-bg: #1a3a2a;
+            --status-success-color: #6ee7b7;
+            --status-success-border: #2d5a3d;
+            --status-error-bg: #3a1a1a;
+            --status-error-color: #fca5a5;
+            --status-error-border: #5a2d2d;
+            --status-info-bg: #1a2a3a;
+            --status-info-color: #93c5fd;
+            --status-info-border: #2d3d5a;
+            --result-warning-start: #3a3a1a;
+            --result-warning-end: #2e2e16;
+            --result-warning-border: #5a5a2d;
+            --result-warning-color: #fde047;
+            --disabled-bg: #4a5568;
+            --error-list-bg: #3a1a1a;
+            --error-list-border: #5a2d2d;
+            --error-list-heading: #fca5a5;
+            --error-list-text: #f8a0a0;
+            --download-hover-bg: #2563eb;
         }
 
         body {
@@ -143,10 +210,10 @@
         }
 
         .info-card {
-            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            background: linear-gradient(135deg, var(--info-card-start) 0%, var(--info-card-end) 100%);
             padding: 20px;
             border-radius: 12px;
-            border: 1px solid #bbf7d0;
+            border: 1px solid var(--info-card-border);
         }
 
         .info-card i {
@@ -181,7 +248,7 @@
             border-radius: 15px;
             padding: 40px;
             text-align: center;
-            background: #fafbfc;
+            background: var(--upload-bg);
             transition: all 0.3s ease;
             cursor: pointer;
             position: relative;
@@ -190,12 +257,12 @@
 
         .file-upload-area:hover {
             border-color: var(--primary);
-            background: #f0fdf4;
+            background: var(--upload-hover-bg);
         }
 
         .file-upload-area.dragover {
             border-color: var(--primary);
-            background: #dcfce7;
+            background: var(--upload-dragover-bg);
             transform: scale(1.02);
         }
 
@@ -230,7 +297,7 @@
         .file-info {
             margin-top: 15px;
             padding: 15px;
-            background: white;
+            background: var(--input-bg);
             border-radius: 10px;
             display: none;
             align-items: center;
@@ -294,7 +361,7 @@
         }
 
         .preview-stat {
-            background: #f8fafc;
+            background: var(--stat-bg);
             padding: 15px;
             border-radius: 10px;
             text-align: center;
@@ -325,7 +392,7 @@
         }
 
         .preview-table th {
-            background: #f8fafc;
+            background: var(--stat-bg);
             padding: 12px;
             text-align: left;
             font-weight: 600;
@@ -343,7 +410,7 @@
         }
 
         .preview-table tr:hover {
-            background: #f8fafc;
+            background: var(--stat-bg);
         }
 
         .convert-btn {
@@ -375,7 +442,7 @@
         }
 
         .convert-btn:disabled {
-            background: #9ca3af;
+            background: var(--disabled-bg);
             cursor: not-allowed;
             transform: none;
         }
@@ -392,7 +459,7 @@
         .progress-bar {
             width: 100%;
             height: 20px;
-            background: #e5e7eb;
+            background: var(--progress-bar-bg);
             border-radius: 10px;
             overflow: hidden;
             margin-bottom: 10px;
@@ -424,21 +491,21 @@
         }
 
         .status.success {
-            background: #d1fae5;
-            color: #065f46;
-            border: 2px solid #6ee7b7;
+            background: var(--status-success-bg);
+            color: var(--status-success-color);
+            border: 2px solid var(--status-success-border);
         }
 
         .status.error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 2px solid #fca5a5;
+            background: var(--status-error-bg);
+            color: var(--status-error-color);
+            border: 2px solid var(--status-error-border);
         }
 
         .status.info {
-            background: #dbeafe;
-            color: #1e40af;
-            border: 2px solid #93c5fd;
+            background: var(--status-info-bg);
+            color: var(--status-info-color);
+            border: 2px solid var(--status-info-border);
         }
 
         .results-section {
@@ -460,16 +527,16 @@
         }
 
         .result-card {
-            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            background: linear-gradient(135deg, var(--info-card-start) 0%, var(--info-card-end) 100%);
             padding: 20px;
             border-radius: 12px;
             text-align: center;
-            border: 1px solid #bbf7d0;
+            border: 1px solid var(--info-card-border);
         }
 
         .result-card.warning {
-            background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);
-            border-color: #fde047;
+            background: linear-gradient(135deg, var(--result-warning-start) 0%, var(--result-warning-end) 100%);
+            border-color: var(--result-warning-border);
         }
 
         .result-value {
@@ -479,7 +546,7 @@
         }
 
         .result-card.warning .result-value {
-            color: #ca8a04;
+            color: var(--result-warning-color);
         }
 
         .result-label {
@@ -505,7 +572,7 @@
         }
 
         .download-btn:hover {
-            background: #1d4ed8;
+            background: var(--download-hover-bg);
             transform: translateY(-2px);
         }
 
@@ -526,25 +593,44 @@
         .error-list {
             margin-top: 15px;
             padding: 15px;
-            background: #fef2f2;
+            background: var(--error-list-bg);
             border-radius: 8px;
-            border: 1px solid #fecaca;
+            border: 1px solid var(--error-list-border);
         }
 
         .error-list h4 {
-            color: #991b1b;
+            color: var(--error-list-heading);
             margin-bottom: 10px;
             font-size: 0.9rem;
         }
 
         .error-list ul {
             margin-left: 20px;
-            color: #7f1d1d;
+            color: var(--error-list-text);
             font-size: 0.85rem;
         }
 
         .error-list li {
             margin-bottom: 5px;
+        }
+
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
         }
 
         @media (max-width: 768px) {
@@ -587,7 +673,10 @@
             </div>
             <div class="user-menu">
                 <span>{{ user.email }}</span>
-                <a href="/logout" class="logout-btn">
+                <button class="theme-toggle" id="themeToggle" title="Toggle dark/light mode">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
+                <a href="#" class="logout-btn" id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i>
                     <span>Logout</span>
                 </a>
@@ -1061,6 +1150,32 @@
 
             resultsSection.classList.add('show');
         }
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script>
+    firebase.initializeApp({{ firebase_config | tojson }});
+    document.getElementById('logoutBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        firebase.auth().signOut().finally(function() {
+            window.location.href = '/logout';
+        });
+    });
+    </script>
+    <script>
+    (function() {
+        const saved = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', saved);
+        const icon = document.getElementById('themeIcon');
+        if (icon) icon.className = saved === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        document.getElementById('themeToggle').addEventListener('click', function() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+            document.getElementById('themeIcon').className = next === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        });
+    })();
     </script>
 </body>
 </html>

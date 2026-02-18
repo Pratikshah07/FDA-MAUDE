@@ -59,20 +59,18 @@ IMDRF_STRUCTURE = {
 # Flask Configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "maude-secret-key-change-in-production-2024")
 
-# Email Configuration for Password Recovery
-MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
-MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
-MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "True").lower() == "true"
-MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "False").lower() == "true"
-MAIL_USERNAME = os.getenv("MAIL_USERNAME", "")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
-MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", MAIL_USERNAME)
+# Firebase Configuration (Frontend JS SDK)
+FIREBASE_CONFIG = {
+    "apiKey": os.getenv("FIREBASE_API_KEY", ""),
+    "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN", ""),
+    "projectId": os.getenv("FIREBASE_PROJECT_ID", ""),
+    "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET", ""),
+    "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID", ""),
+    "appId": os.getenv("FIREBASE_APP_ID", ""),
+}
 
-# Password Reset Token Expiry (in seconds)
-PASSWORD_RESET_EXPIRY = 3600  # 1 hour
-
-# Test accounts for development/testing
-# Set TEST_ACCOUNTS_ENABLED to 'False' in production to hide and avoid auto-creation
-TEST_ACCOUNTS_ENABLED = os.getenv("TEST_ACCOUNTS_ENABLED", "True").lower() == "true"
-TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "test@maude.local")
-TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD", "Test12345")
+# Firebase Admin SDK (Backend)
+FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv(
+    "FIREBASE_SERVICE_ACCOUNT_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "firebase-service-account.json")
+)
