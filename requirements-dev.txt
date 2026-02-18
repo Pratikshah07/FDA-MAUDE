@@ -17,3 +17,6 @@ streamlit>=1.20.0
 plotly>=5.15.0
 numpy>=1.25.0
 gunicorn>=21.2.0
+firebase-admin>=6.4.0
+PyJWT>=2.8.1
+cryptography>=41.0.7
