@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements-dev.txt
-    startCommand: gunicorn -b 0.0.0.0:$PORT app:app --timeout 600 --workers 1
+    startCommand: gunicorn -b 0.0.0.0:$PORT app:app --timeout 600 --workers 1 --preload --log-level debug
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -23,7 +23,5 @@ services:
       - key: FIREBASE_MESSAGING_SENDER_ID
         sync: false
       - key: FIREBASE_APP_ID
-        sync: false
-      - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
     healthCheckPath: /login
