@@ -70,7 +70,25 @@ FIREBASE_CONFIG = {
 }
 
 # Firebase Admin SDK (Backend)
-FIREBASE_SERVICE_ACCOUNT_PATH = os.getenv(
-    "FIREBASE_SERVICE_ACCOUNT_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "firebase-service-account.json")
-)
+# Try to use Firebase service account path from env, or create temp file from JSON content
+import json
+import tempfile
+
+_firebase_service_account_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "")
+if not _firebase_service_account_path or not os.path.exists(_firebase_service_account_path):
+    # Try to load from JSON content in environment variable
+    _firebase_json_content = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+    if _firebase_json_content:
+        try:
+            # Create a temporary file with the JSON content
+            _temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
+            json.dump(json.loads(_firebase_json_content), _temp_file)
+            _temp_file.close()
+            FIREBASE_SERVICE_ACCOUNT_PATH = _temp_file.name
+        except Exception:
+            # Fallback to default location
+            FIREBASE_SERVICE_ACCOUNT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firebase-service-account.json")
+    else:
+        FIREBASE_SERVICE_ACCOUNT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firebase-service-account.json")
+else:
+    FIREBASE_SERVICE_ACCOUNT_PATH = _firebase_service_account_path

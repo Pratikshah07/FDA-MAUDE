@@ -25,15 +25,30 @@ class FirebaseAuthManager:
     """Manages Firebase Authentication token verification."""
 
     def __init__(self, service_account_path: str):
+        self.service_account_path = service_account_path
+        self._app_initialized = False
+
+    def _ensure_initialized(self):
+        """Lazy initialize Firebase app on first use."""
+        if self._app_initialized:
+            return
+
         try:
             firebase_admin.get_app()
+            self._app_initialized = True
         except ValueError:
-            cred = credentials.Certificate(service_account_path)
-            firebase_admin.initialize_app(cred)
+            try:
+                cred = credentials.Certificate(self.service_account_path)
+                firebase_admin.initialize_app(cred)
+                self._app_initialized = True
+            except Exception as e:
+                print(f"[Firebase Init Error] Failed to initialize Firebase: {type(e).__name__}: {e}")
+                raise
 
     def verify_id_token(self, id_token: str) -> Optional[User]:
         """Verify a Firebase ID token with clock skew tolerance."""
         try:
+            self._ensure_initialized()
             # Get kid from token header
             header = jwt.get_unverified_header(id_token)
             kid = header.get("kid")
