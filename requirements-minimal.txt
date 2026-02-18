@@ -3,11 +3,13 @@
 
 flask>=3.0.0
 flask-login>=0.6.3
-flask-mail>=0.9.1
 werkzeug>=3.0.1
-bcrypt>=4.1.2
 itsdangerous>=2.1.2
 python-dotenv>=1.0.0
+
+# Firebase Authentication (token verification via PyJWT + Google public keys)
+PyJWT>=2.8.1
+cryptography>=41.0.7
 
 # Essential for MAUDE processing
 pandas==2.0.3

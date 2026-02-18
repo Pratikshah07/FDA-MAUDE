@@ -1,15 +1,20 @@
 """
 Firebase Authentication module for MAUDE Data Processor.
-Verifies Firebase ID tokens and manages session-based user state.
+Verifies Firebase ID tokens using Google's public keys with clock skew tolerance.
 """
-import firebase_admin
-from firebase_admin import credentials, auth as firebase_auth
 from flask_login import UserMixin
 from typing import Optional
 import jwt
 import requests
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+
+
+# Firebase project ID (must match your Firebase project)
+FIREBASE_PROJECT_ID = "maude-data-processor"
+
+# Google's public key endpoint for Firebase token verification
+GOOGLE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
 
 
 class User(UserMixin):
@@ -24,38 +29,22 @@ class User(UserMixin):
 class FirebaseAuthManager:
     """Manages Firebase Authentication token verification."""
 
-    def __init__(self, service_account_path: str):
+    def __init__(self, service_account_path: str = ""):
         self.service_account_path = service_account_path
-        self._app_initialized = False
-
-    def _ensure_initialized(self):
-        """Lazy initialize Firebase app on first use."""
-        if self._app_initialized:
-            return
-
-        try:
-            firebase_admin.get_app()
-            self._app_initialized = True
-        except ValueError:
-            try:
-                cred = credentials.Certificate(self.service_account_path)
-                firebase_admin.initialize_app(cred)
-                self._app_initialized = True
-            except Exception as e:
-                print(f"[Firebase Init Error] Failed to initialize Firebase: {type(e).__name__}: {e}")
-                raise
 
     def verify_id_token(self, id_token: str) -> Optional[User]:
-        """Verify a Firebase ID token with clock skew tolerance."""
+        """Verify a Firebase ID token with clock skew tolerance.
+
+        Uses Google's public keys directly (no firebase-admin SDK needed for verification).
+        Tolerates up to 5 minutes of system clock drift.
+        """
         try:
-            self._ensure_initialized()
-            # Get kid from token header
+            # Get kid (key ID) from token header
             header = jwt.get_unverified_header(id_token)
             kid = header.get("kid")
 
-            # Get Google's public keys for verification
-            certs_url = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
-            response = requests.get(certs_url)
+            # Fetch Google's public keys
+            response = requests.get(GOOGLE_CERTS_URL, timeout=10)
             response.raise_for_status()
             certs = response.json()
 
@@ -68,13 +57,13 @@ class FirebaseAuthManager:
             cert = x509.load_pem_x509_certificate(cert_pem, default_backend())
             public_key = cert.public_key()
 
-            # Verify with 5-minute clock skew tolerance (300 seconds)
-            # Skip iat verification due to system clock drift, but still verify signature and exp
+            # Verify token: signature + audience, with 5-minute clock skew tolerance
             decoded = jwt.decode(
                 id_token,
                 public_key,
                 algorithms=["RS256"],
-                audience="maude-data-processor",
+                audience=FIREBASE_PROJECT_ID,
+                issuer=f"https://securetoken.google.com/{FIREBASE_PROJECT_ID}",
                 options={"leeway": 300, "verify_iat": False}
             )
 

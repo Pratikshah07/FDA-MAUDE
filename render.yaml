@@ -12,10 +12,18 @@ services:
         value: "--timeout 600 --workers 1"
       - key: SECRET_KEY
         generateValue: true
-      - key: TEST_ACCOUNTS_ENABLED
-        value: "True"
-      - key: TEST_USER_EMAIL
-        value: "test@maude.local"
-      - key: TEST_USER_PASSWORD
-        value: "Test12345"
+      - key: FIREBASE_API_KEY
+        sync: false
+      - key: FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: FIREBASE_APP_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
     healthCheckPath: /login

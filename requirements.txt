@@ -1,27 +1,22 @@
-# Vercel deployment - Absolute minimum to stay under 250MB
-# For Render.com and other platforms: use requirements-dev.txt instead
-# WARNING: This may not support all features. For full functionality, run locally.
+# Main requirements - for Vercel and local development
+# For Render.com: uses requirements-dev.txt (via render.yaml)
 
-flask==3.0.0
-flask-login==0.6.3
-werkzeug==3.0.1
-itsdangerous==2.1.2
-python-dotenv==1.0.0
-gunicorn==21.2.0
-firebase-admin==6.4.0
+flask>=3.0.0
+flask-login>=0.6.3
+werkzeug>=3.0.1
+itsdangerous>=2.1.2
+python-dotenv>=1.0.0
+gunicorn>=21.2.0
 
-# Absolute minimum data processing stack
-# Using oldest stable versions to minimize size
-pandas==1.3.5
-numpy==1.21.6
-openpyxl==3.0.9
+# Firebase Authentication (token verification via PyJWT + Google public keys)
+PyJWT>=2.8.1
+cryptography>=41.0.7
 
-# These are small and required
-python-dateutil==2.8.2
-requests==2.31.0
+# Data processing
+pandas>=2.0.3
+numpy>=1.24.3
+openpyxl>=3.0.9
 
-# Firebase token verification with clock skew tolerance
-PyJWT==2.8.1
-cryptography==41.0.7
-
-# Estimated total: ~180-200MB (should be under 250MB)
+# Required utilities
+python-dateutil>=2.8.2
+requests>=2.31.0

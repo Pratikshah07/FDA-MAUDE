@@ -32,7 +32,7 @@ from backend.imdrf_insights import (
 from backend.imdrf_annex_validator import get_annex_status
 from backend.txt_to_csv_converter import TxtToCsvConverter, get_txt_preview
 from backend.csv_viewer import LargeCSVViewer, get_csv_page, get_csv_info
-from config import GROQ_API_KEY, SECRET_KEY, FIREBASE_CONFIG, FIREBASE_SERVICE_ACCOUNT_PATH
+from config import GROQ_API_KEY, SECRET_KEY, FIREBASE_CONFIG
 
 # Default IMDRF Annexure file bundled with the project
 DEFAULT_IMDRF_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Annexes A-G consolidated.xlsx')
@@ -81,8 +81,8 @@ def _handle_unauthorized():
         pass
     return redirect(url_for('login', next=request.path))
 
-# Initialize Firebase Auth Manager
-auth_manager = FirebaseAuthManager(FIREBASE_SERVICE_ACCOUNT_PATH)
+# Initialize Firebase Auth Manager (uses PyJWT + Google public keys, no service account needed)
+auth_manager = FirebaseAuthManager()
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls'}
 
