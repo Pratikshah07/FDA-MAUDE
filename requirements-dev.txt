@@ -19,6 +19,7 @@ numpy>=1.25.0
 # Required utilities
 python-dateutil>=2.8.2
 requests>=2.31.0
+beautifulsoup4>=4.12.0
 
 # AI/LLM (optional - app works without it)
 groq>=0.4.1
