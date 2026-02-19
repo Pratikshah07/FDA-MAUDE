@@ -466,13 +466,13 @@
 
         <div class="header">
             <h1><i class="fas fa-list-ol"></i> IMDRF Code Counts</h1>
-            <p class="subtitle">Upload a cleaned MAUDE file and the IMDRF Annexes A-G file to download code counts with descriptions</p>
+            <p class="subtitle">Upload a cleaned MAUDE file to download IMDRF code counts with descriptions</p>
         </div>
 
         <div class="main-card">
             <h2 class="section-title">
                 <i class="fas fa-file-upload"></i>
-                Upload Cleaned MAUDE File + IMDRF Annex
+                Upload Cleaned MAUDE File
             </h2>
 
             <form id="countForm" enctype="multipart/form-data">
@@ -490,24 +490,6 @@
                         <div class="file-size" id="fileSize"></div>
                     </div>
                     <button type="button" class="remove-btn" id="removeFile">
-                        <i class="fas fa-times-circle"></i>
-                    </button>
-                </div>
-
-                <div class="file-upload-area" id="annexUploadArea">
-                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                    <div class="upload-text">Upload IMDRF Annexes A-G consolidated file</div>
-                    <div class="upload-hint">Required for accurate code descriptions (XLSX or XLS)</div>
-                    <input type="file" id="annex" name="annex" accept=".xlsx,.xls" required>
-                </div>
-
-                <div class="file-info" id="annexInfo">
-                    <i class="fas fa-file-excel file-icon"></i>
-                    <div class="file-details">
-                        <div class="file-name" id="annexName"></div>
-                        <div class="file-size" id="annexSize"></div>
-                    </div>
-                    <button type="button" class="remove-btn" id="removeAnnex">
                         <i class="fas fa-times-circle"></i>
                     </button>
                 </div>
@@ -532,12 +514,6 @@
         const fileName = document.getElementById('fileName');
         const fileSize = document.getElementById('fileSize');
         const removeFileBtn = document.getElementById('removeFile');
-        const annexInput = document.getElementById('annex');
-        const annexUploadArea = document.getElementById('annexUploadArea');
-        const annexInfo = document.getElementById('annexInfo');
-        const annexName = document.getElementById('annexName');
-        const annexSize = document.getElementById('annexSize');
-        const removeAnnexBtn = document.getElementById('removeAnnex');
         const form = document.getElementById('countForm');
         const downloadBtn = document.getElementById('downloadBtn');
         const statusMessage = document.getElementById('statusMessage');
@@ -585,19 +561,6 @@
             fileUploadArea.style.display = 'block';
         }
 
-        function updateAnnexInfo(file) {
-            annexName.textContent = file.name;
-            annexSize.textContent = formatFileSize(file.size);
-            annexInfo.classList.add('show');
-            annexUploadArea.style.display = 'none';
-        }
-
-        function clearAnnexInfo() {
-            annexInput.value = '';
-            annexInfo.classList.remove('show');
-            annexUploadArea.style.display = 'block';
-        }
-
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 updateFileInfo(e.target.files[0]);
@@ -607,17 +570,6 @@
 
         removeFileBtn.addEventListener('click', () => {
             clearFileInfo();
-        });
-
-        annexInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                updateAnnexInfo(e.target.files[0]);
-                clearStatus();
-            }
-        });
-
-        removeAnnexBtn.addEventListener('click', () => {
-            clearAnnexInfo();
         });
 
         fileUploadArea.addEventListener('dragover', (e) => {
@@ -639,25 +591,6 @@
             }
         });
 
-        annexUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            annexUploadArea.classList.add('dragover');
-        });
-
-        annexUploadArea.addEventListener('dragleave', () => {
-            annexUploadArea.classList.remove('dragover');
-        });
-
-        annexUploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            annexUploadArea.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) {
-                annexInput.files = e.dataTransfer.files;
-                updateAnnexInfo(e.dataTransfer.files[0]);
-                clearStatus();
-            }
-        });
-
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -666,14 +599,8 @@
                 return;
             }
 
-            if (!annexInput.files.length) {
-                showStatus('Please upload the IMDRF Annexes A-G file.', 'error');
-                return;
-            }
-
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
-            formData.append('annex', annexInput.files[0]);
 
             downloadBtn.disabled = true;
             showStatus('Generating IMDRF code counts...', 'info');
@@ -719,8 +646,9 @@
     </script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script id="firebase-config-data" type="application/json">{{ firebase_config | tojson }}</script>
     <script>
-    firebase.initializeApp({{ firebase_config | tojson }});
+    firebase.initializeApp(JSON.parse(document.getElementById('firebase-config-data').textContent));
     document.getElementById('logoutBtn').addEventListener('click', function(e) {
         e.preventDefault();
         firebase.auth().signOut().finally(function() {

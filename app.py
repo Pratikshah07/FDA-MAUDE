@@ -291,27 +291,15 @@ def api_imdrf_counts_download_xlsx():
     if 'file' not in request.files:
         return jsonify({'error': 'No cleaned file uploaded'}), 400
 
-    if 'annex' not in request.files:
-        return jsonify({'error': 'IMDRF Annex file is required'}), 400
-
     file = request.files['file']
-    annex_file = request.files['annex']
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
-
-    if annex_file.filename == '':
-        return jsonify({'error': 'No Annex file selected'}), 400
 
     file_ext = os.path.splitext(file.filename.lower())[1]
     if file_ext not in {'.csv', '.xlsx', '.xls'}:
         return jsonify({'error': 'Invalid file type. Please upload CSV, XLS, or XLSX file.'}), 400
 
-    annex_ext = os.path.splitext(annex_file.filename.lower())[1]
-    if annex_ext not in {'.xlsx', '.xls'}:
-        return jsonify({'error': 'Invalid Annex file type. Please upload XLS or XLSX file.'}), 400
-
     temp_path = None
-    annex_path = None
 
     try:
         filename = secure_filename(file.filename)
@@ -319,9 +307,7 @@ def api_imdrf_counts_download_xlsx():
         temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"counts_{file_id}_{filename}")
         file.save(temp_path)
 
-        annex_filename = secure_filename(annex_file.filename)
-        annex_path = os.path.join(app.config['UPLOAD_FOLDER'], f"annex_{file_id}_{annex_filename}")
-        annex_file.save(annex_path)
+        annex_path = DEFAULT_IMDRF_PATH
 
         cleaned_df = _load_cleaned_dataframe(temp_path)
         counts_by_level = get_imdrf_code_counts_all_levels_with_descriptions(temp_path, annex_path, df=cleaned_df)
@@ -379,11 +365,6 @@ def api_imdrf_counts_download_xlsx():
                 os.remove(temp_path)
             except Exception:
                 pass
-        if annex_path and os.path.exists(annex_path):
-            try:
-                os.remove(annex_path)
-            except Exception:
-                pass
 
 
 @app.route('/api/imdrf-counts/download-csv', methods=['POST'])
@@ -393,31 +374,19 @@ def api_imdrf_counts_download_csv():
     if 'file' not in request.files:
         return jsonify({'error': 'No cleaned file uploaded'}), 400
 
-    if 'annex' not in request.files:
-        return jsonify({'error': 'IMDRF Annex file is required'}), 400
-
     file = request.files['file']
-    annex_file = request.files['annex']
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
-
-    if annex_file.filename == '':
-        return jsonify({'error': 'No Annex file selected'}), 400
 
     file_ext = os.path.splitext(file.filename.lower())[1]
     if file_ext not in {'.csv', '.xlsx', '.xls'}:
         return jsonify({'error': 'Invalid file type. Please upload CSV, XLS, or XLSX file.'}), 400
-
-    annex_ext = os.path.splitext(annex_file.filename.lower())[1]
-    if annex_ext not in {'.xlsx', '.xls'}:
-        return jsonify({'error': 'Invalid Annex file type. Please upload XLS or XLSX file.'}), 400
 
     level = request.form.get('level', 'all')
     if level not in {'all', '1', '2', '3'}:
         return jsonify({'error': 'Invalid level selection.'}), 400
 
     temp_path = None
-    annex_path = None
 
     try:
         filename = secure_filename(file.filename)
@@ -425,9 +394,7 @@ def api_imdrf_counts_download_csv():
         temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"counts_{file_id}_{filename}")
         file.save(temp_path)
 
-        annex_filename = secure_filename(annex_file.filename)
-        annex_path = os.path.join(app.config['UPLOAD_FOLDER'], f"annex_{file_id}_{annex_filename}")
-        annex_file.save(annex_path)
+        annex_path = DEFAULT_IMDRF_PATH
 
         counts_by_level = get_imdrf_code_counts_all_levels_with_descriptions(temp_path, annex_path)
 
@@ -470,11 +437,6 @@ def api_imdrf_counts_download_csv():
         if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
-            except Exception:
-                pass
-        if annex_path and os.path.exists(annex_path):
-            try:
-                os.remove(annex_path)
             except Exception:
                 pass
 

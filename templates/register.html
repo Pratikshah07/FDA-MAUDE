@@ -517,8 +517,9 @@
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script id="firebase-config-data" type="application/json">{{ firebase_config | tojson }}</script>
     <script>
-        firebase.initializeApp({{ firebase_config | tojson }});
+        firebase.initializeApp(JSON.parse(document.getElementById('firebase-config-data').textContent));
 
         const form = document.getElementById('registerForm');
         const submitBtn = document.getElementById('submitBtn');
