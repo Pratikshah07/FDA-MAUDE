@@ -636,7 +636,8 @@
                 a.remove();
                 window.URL.revokeObjectURL(url);
 
-                showStatus('Download ready. Your file should begin downloading.', 'success');
+                showStatus('File downloaded successfully!', 'success');
+                setTimeout(clearStatus, 4000);
             } catch (err) {
                 showStatus(err.message || 'Something went wrong.', 'error');
             } finally {
