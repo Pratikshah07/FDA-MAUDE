@@ -6,13 +6,12 @@ Used for:
 3. IMDRF semantic mapping
 """
 import os
-from groq import Groq
 from config import GROQ_API_KEY, GROQ_MODEL
 
 
 class GroqClient:
     """Client for interacting with Groq API."""
-    
+
     def __init__(self):
         if not GROQ_API_KEY:
             # Graceful degradation: allow initialization without API key
@@ -22,6 +21,7 @@ class GroqClient:
             print("Warning: GROQ_API_KEY not set. AI-assisted features will be disabled.")
         else:
             try:
+                from groq import Groq  # lazy import — groq SDK is heavy; only load when actually needed
                 self.client = Groq(api_key=GROQ_API_KEY)
                 self.model = GROQ_MODEL
                 self.available = True

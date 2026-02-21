@@ -17,22 +17,14 @@ from werkzeug.utils import secure_filename
 import tempfile
 import io
 
-from backend.processor import MAUDEProcessor
 from backend.auth import FirebaseAuthManager, User
-from backend.imdrf_insights import (
-    prepare_data_for_insights,
-    analyze_imdrf_insights,
-    get_top_manufacturers_for_prefix,
-    LEVEL_CONFIG,
-    get_imdrf_code_counts_all_levels,
-    get_imdrf_code_counts_all_levels_with_descriptions,
-    get_patient_problem_counts,
-    _load_cleaned_dataframe
-)
-from backend.imdrf_annex_validator import get_annex_status
 from backend.txt_to_csv_converter import TxtToCsvConverter, get_txt_preview
 from backend.csv_viewer import LargeCSVViewer, get_csv_page, get_csv_info
 from config import GROQ_API_KEY, SECRET_KEY, FIREBASE_CONFIG
+
+# Heavy processing modules are imported lazily inside route functions so the
+# app binds quickly on startup (critical for Render cold-start wake-up time).
+# Python caches modules in sys.modules, so the import only pays the cost once.
 
 # Default IMDRF Annexure file bundled with the project
 DEFAULT_IMDRF_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Annexes A-G consolidated.xlsx')
@@ -206,6 +198,7 @@ def maude_export_download(job_id):
 def _run_processing_job(job_id, input_path, output_path, output_filename, imdrf_path, user_id):
     _set_job_status(job_id, status='running')
     try:
+        from backend.processor import MAUDEProcessor  # lazy import
         processor = MAUDEProcessor()
 
         # Use uploaded IMDRF file, or fall back to bundled default
@@ -302,6 +295,11 @@ def api_imdrf_counts_download_xlsx():
     temp_path = None
 
     try:
+        from backend.imdrf_insights import (  # lazy import
+            _load_cleaned_dataframe,
+            get_imdrf_code_counts_all_levels_with_descriptions,
+            get_patient_problem_counts,
+        )
         filename = secure_filename(file.filename)
         file_id = f"{current_user.id}_{os.urandom(8).hex()}"
         temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"counts_{file_id}_{filename}")
@@ -394,6 +392,7 @@ def api_imdrf_counts_download_csv():
         temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"counts_{file_id}_{filename}")
         file.save(temp_path)
 
+        from backend.imdrf_insights import get_imdrf_code_counts_all_levels_with_descriptions  # lazy import
         annex_path = DEFAULT_IMDRF_PATH
 
         counts_by_level = get_imdrf_code_counts_all_levels_with_descriptions(temp_path, annex_path)
@@ -575,6 +574,7 @@ def process_file():
             }), 202
 
         # Sync processing (fallback)
+        from backend.processor import MAUDEProcessor  # lazy import
         processor = MAUDEProcessor()
 
         # Use uploaded IMDRF file, or fall back to bundled default
@@ -676,6 +676,7 @@ def api_prepare_insights():
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
         file.save(input_path)
 
+        from backend.imdrf_insights import prepare_data_for_insights  # lazy import
         # Prepare data for insights at the specified level
         result = prepare_data_for_insights(input_path, level=level)
 
@@ -729,6 +730,7 @@ def api_refresh_insights():
         if not file_path or not os.path.exists(file_path):
             return jsonify({'error': 'File not found. Please upload again.'}), 404
 
+        from backend.imdrf_insights import prepare_data_for_insights  # lazy import (cached after first call)
         result = prepare_data_for_insights(file_path, level=level)
 
         return jsonify({
@@ -777,6 +779,7 @@ def api_top_manufacturers():
         if not file_path or not os.path.exists(file_path):
             return jsonify({'error': 'File not found. Please upload again.'}), 404
 
+        from backend.imdrf_insights import prepare_data_for_insights, get_top_manufacturers_for_prefix  # lazy import
         # Prepare data again (in memory) at the same level
         result = prepare_data_for_insights(file_path, level=level)
         df_exploded = result['df_exploded']
@@ -828,6 +831,7 @@ def api_analyze_insights():
         if not file_path or not os.path.exists(file_path):
             return jsonify({'error': 'File not found. Please upload again.'}), 404
 
+        from backend.imdrf_insights import prepare_data_for_insights, analyze_imdrf_insights  # lazy import
         # Prepare data at the same level
         result = prepare_data_for_insights(file_path, level=level)
         df_exploded = result['df_exploded']
@@ -877,6 +881,7 @@ def api_analyze_insights():
 def api_annex_status():
     """Get the status of the IMDRF Annex file loading."""
     try:
+        from backend.imdrf_annex_validator import get_annex_status  # lazy import
         status = get_annex_status()
         return jsonify({
             'success': True,
@@ -908,6 +913,7 @@ def api_download_code_counts_xlsx():
         if not file_path or not os.path.exists(file_path):
             return jsonify({'error': 'File not found. Please upload again.'}), 404
 
+        from backend.imdrf_insights import get_imdrf_code_counts_all_levels  # lazy import
         counts_by_level = get_imdrf_code_counts_all_levels(file_path)
 
         from openpyxl import Workbook
