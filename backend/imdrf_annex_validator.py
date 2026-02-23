@@ -13,8 +13,8 @@ from typing import Dict, Set, Optional, Tuple
 from functools import lru_cache
 
 
-# Default path for the Annex file (can be overridden via environment variable)
-DEFAULT_ANNEX_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'Annexes A-G consolidated.xlsx')
+# Default path for the Annex file — lives in the project root alongside app.py
+DEFAULT_ANNEX_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Annexes A-G consolidated.xlsx')
 ANNEX_FILE_PATH = os.environ.get('IMDRF_ANNEX_FILE', DEFAULT_ANNEX_PATH)
 
 

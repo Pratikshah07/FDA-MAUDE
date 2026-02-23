@@ -55,6 +55,8 @@ uploads/
 *.xls
 *.csv
 !requirements.txt
+# Allow the bundled IMDRF Annexure reference file
+!Annexes A-G consolidated.xlsx
 
 # Sensitive data - DO NOT COMMIT
 data/

@@ -38,6 +38,8 @@ uploads/
 *.tmp
 *.temp
 tmpclaude-*
+# Allow the bundled IMDRF Annexure reference file
+!Annexes A-G consolidated.xlsx
 
 # Documentation (keep only essential)
 *.md
