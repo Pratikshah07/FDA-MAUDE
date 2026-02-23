@@ -466,16 +466,17 @@ def prepare_data_for_insights(file_path, level=1):
     file_ext = os.path.splitext(file_path)[1].lower()
 
     if file_ext in ['.xlsx', '.xls']:
-        df = pd.read_excel(file_path, dtype=str)
+        df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
     elif file_ext == '.csv':
-        df = pd.read_csv(file_path, dtype=str, encoding="utf-8", on_bad_lines="skip")
+        df = pd.read_csv(file_path, dtype=str, encoding="utf-8",
+                         on_bad_lines="skip", keep_default_na=False)
     else:
         raise ValueError(f"Unsupported file format: {file_ext}. Please upload CSV, XLS, or XLSX file.")
 
     # Clean up string columns
     for col in df.columns:
         df[col] = df[col].astype(str).str.strip()
-        df[col] = df[col].replace({"nan": "", "NaN": "", "None": ""})
+        df[col] = df[col].replace({"nan": "", "NaN": "", "None": "", "NaT": "", "<NA>": ""})
 
     # Find required columns using flexible matching
     imdrf_col = find_imdrf_column(df)
@@ -529,9 +530,14 @@ def prepare_data_for_insights(file_path, level=1):
 
     # Get unique prefixes and manufacturers
     prefix_counts_series = df_with_dates['imdrf_prefix'].value_counts()
-    prefix_counts = prefix_counts_series.to_dict()
+    # Convert to plain str keys to avoid float/str comparison errors in sorted()
+    prefix_counts = {str(k): int(v) for k, v in prefix_counts_series.to_dict().items()
+                     if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', 'nat')}
     all_prefixes = sorted(prefix_counts.keys())
-    all_manufacturers = sorted([m for m in df_with_dates[mfr_col].unique() if m and str(m).strip()])
+    all_manufacturers = sorted(
+        str(m) for m in df_with_dates[mfr_col].unique()
+        if m is not None and str(m).strip() and str(m).strip().lower() not in ('nan', 'none', 'nat')
+    )
 
     # Get level label for display
     level_label = LEVEL_CONFIG.get(level, {}).get('label', f'Level-{level}')
@@ -556,15 +562,20 @@ def _load_cleaned_dataframe(file_path: str) -> pd.DataFrame:
     file_ext = os.path.splitext(file_path)[1].lower()
 
     if file_ext in ['.xlsx', '.xls']:
-        df = pd.read_excel(file_path, dtype=str)
+        # keep_default_na=False prevents pandas from silently converting strings
+        # like "NA", "N/A", "null" to float NaN — keeps them as literal strings.
+        df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
     elif file_ext == '.csv':
-        df = pd.read_csv(file_path, dtype=str, encoding="utf-8", on_bad_lines="skip")
+        df = pd.read_csv(file_path, dtype=str, encoding="utf-8",
+                         on_bad_lines="skip", keep_default_na=False)
     else:
         raise ValueError(f"Unsupported file format: {file_ext}. Please upload CSV, XLS, or XLSX file.")
 
     for col in df.columns:
+        # Force every cell to a plain Python str, then strip whitespace.
+        # astype(str) converts residual float NaN → "nan"; replace removes it.
         df[col] = df[col].astype(str).str.strip()
-        df[col] = df[col].replace({"nan": "", "NaN": "", "None": ""})
+        df[col] = df[col].replace({"nan": "", "NaN": "", "None": "", "NaT": "", "<NA>": ""})
 
     return df
 
@@ -597,7 +608,14 @@ def get_imdrf_code_counts_all_levels(file_path, df: pd.DataFrame = None):
             return {}
         exploded = exploded.dropna()
         exploded = exploded[exploded.astype(str).str.strip() != ""]
-        counts = exploded.value_counts().to_dict()
+        raw_counts = exploded.value_counts().to_dict()
+        # Ensure all keys are plain strings — pandas 2.x can produce mixed-type
+        # index values (float NaN alongside str) in object-dtype Series.
+        counts = {}
+        for k, v in raw_counts.items():
+            key = str(k).strip()
+            if key and key.lower() not in ('nan', 'none', 'nat', ''):
+                counts[key] = int(v)
         return counts
 
     return {

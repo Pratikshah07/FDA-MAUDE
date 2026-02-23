@@ -331,9 +331,10 @@ def api_imdrf_counts_download_xlsx():
             ws.cell(row=ws.max_row, column=3).font = bold_font
 
             level_counts = counts_by_level.get(level, {})
-            for code in sorted(level_counts.keys()):
+            # Use str() as sort key to guard against any float/str mixed-type keys
+            for code in sorted(level_counts.keys(), key=str):
                 row_data = level_counts.get(code, {})
-                ws.append([code, row_data.get('description', ''), row_data.get('count', 0)])
+                ws.append([str(code), row_data.get('description', ''), row_data.get('count', 0)])
 
             ws.append(["", ""])
 
@@ -341,8 +342,8 @@ def api_imdrf_counts_download_xlsx():
         ws.cell(row=ws.max_row, column=1).font = bold_font
         ws.cell(row=ws.max_row, column=2).font = bold_font
 
-        for problem in sorted(patient_problem_counts.keys()):
-            ws.append([problem, patient_problem_counts.get(problem, 0), ""])
+        for problem in sorted(patient_problem_counts.keys(), key=str):
+            ws.append([str(problem), patient_problem_counts.get(problem, 0), ""])
 
         output = io.BytesIO()
         wb.save(output)
@@ -409,13 +410,13 @@ def api_imdrf_counts_download_csv():
             for code, count in level_counts.items():
                 rows.append((code, count.get('description', ''), count.get('count', 0)))
 
-        rows.sort(key=lambda x: x[0])
+        rows.sort(key=lambda x: str(x[0]))
 
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['IMDRF Code', 'Description', 'Count'])
         for code, description, count in rows:
-            writer.writerow([code, description, count])
+            writer.writerow([str(code), description, count])
 
         csv_bytes = io.BytesIO(output.getvalue().encode('utf-8'))
         csv_bytes.seek(0)
@@ -931,8 +932,8 @@ def api_download_code_counts_xlsx():
             ws.cell(row=ws.max_row, column=1).font = bold_font
 
             level_counts = counts_by_level.get(level, {})
-            for code in sorted(level_counts.keys()):
-                ws.append([code, level_counts.get(code, 0)])
+            for code in sorted(level_counts.keys(), key=str):
+                ws.append([str(code), level_counts.get(code, 0)])
 
             ws.append(["", ""])
 
