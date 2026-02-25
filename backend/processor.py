@@ -41,6 +41,12 @@ class MAUDEProcessor:
         
         # Column mappings (resolved by ColumnIdentifier)
         self.column_map = {}
+
+        # Audit tracking (populated during process_file phases)
+        self._audit_cols_removed: List[str] = []
+        self._audit_rows_removed_by_reason: List[Dict] = []   # [{reason, count}]
+        self._audit_manufacturer_list: List[str] = []
+        self._audit_imdrf_stats: Dict = {}                    # {non_empty, mapped, unmapped}
     
     def load_imdrf_structure(self, file_path: str):
         """
@@ -125,7 +131,12 @@ class MAUDEProcessor:
             'original_cols': original_cols,
             'final_cols': len(df.columns),
             'rows_removed': original_rows - len(df),
-            'validation': validation_results
+            'validation': validation_results,
+            # Audit fields
+            'cols_removed': self._audit_cols_removed,
+            'rows_removed_by_reason': self._audit_rows_removed_by_reason,
+            'manufacturer_list': self._audit_manufacturer_list,
+            'imdrf_stats': self._audit_imdrf_stats,
         }
 
     def _sanitize_for_excel(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -319,9 +330,11 @@ class MAUDEProcessor:
                     cols_to_remove.append(col)
                     break
         
+        self._audit_cols_removed = list(cols_to_remove)
+
         if cols_to_remove:
             df = df.drop(columns=cols_to_remove)
-        
+
         return df
     
     def _standardize_dates(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -355,9 +368,13 @@ class MAUDEProcessor:
                 (df[date_received_col].astype(str).str.strip() == '')
             )
             rows_removed = mask.sum()
-            df = df[~mask]
             if rows_removed > 0:
+                self._audit_rows_removed_by_reason.append({
+                    'reason': 'Both Event Date and Date Received are blank',
+                    'count': int(rows_removed),
+                })
                 print(f"Removed {rows_removed} rows where both Event Date and Date Received are blank")
+            df = df[~mask]
         
         return df
     
@@ -616,9 +633,16 @@ class MAUDEProcessor:
         
         # Apply mapping deterministically
         df[manufacturer_col] = df[manufacturer_col].map(manufacturer_map).fillna(df[manufacturer_col])
-        
+
+        # Capture sorted unique manufacturer list for audit report
+        mfr_vals = [
+            str(v).strip() for v in df[manufacturer_col].dropna().unique()
+            if str(v).strip() and str(v).strip().lower() not in ('nan', 'none', '', 'null')
+        ]
+        self._audit_manufacturer_list = sorted(mfr_vals)
+
         print(f"Manufacturer normalization complete")
-        
+
         return df
     
     def _extract_keywords(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -752,6 +776,12 @@ class MAUDEProcessor:
         non_empty = df[device_problem_col].notna() & (df[device_problem_col].astype(str).str.strip() != '')
         mapped = df['IMDRF Code'].notna() & (df['IMDRF Code'].astype(str).str.strip() != '')
         print(f"IMDRF mapping complete: {non_empty.sum()} non-empty device problems, {mapped.sum()} codes mapped")
+
+        self._audit_imdrf_stats = {
+            'non_empty_device_problems': int(non_empty.sum()),
+            'mapped': int(mapped.sum()),
+            'unmapped': int(non_empty.sum()) - int(mapped.sum()),
+        }
         
         # Verify final position
         final_dp_idx = df.columns.get_loc(device_problem_col)

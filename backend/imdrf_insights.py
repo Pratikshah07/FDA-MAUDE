@@ -33,6 +33,10 @@ LEVEL_CONFIG = {
     3: {'length': 7, 'label': 'Level-3 (7 chars)'}
 }
 
+# IMDRF Level-1 prefixes that must be excluded from all code-count outputs.
+# Codes at any level whose first 3 chars match an entry here will be dropped.
+EXCLUDED_IMDRF_L1_PREFIXES: set = {'A24', 'A25'}
+
 
 def parse_flexible_date(s):
     """
@@ -611,11 +615,16 @@ def get_imdrf_code_counts_all_levels(file_path, df: pd.DataFrame = None):
         raw_counts = exploded.value_counts().to_dict()
         # Ensure all keys are plain strings — pandas 2.x can produce mixed-type
         # index values (float NaN alongside str) in object-dtype Series.
+        # Also exclude any code whose Level-1 prefix (first 3 chars) is in
+        # EXCLUDED_IMDRF_L1_PREFIXES (e.g. A24, A25).
         counts = {}
         for k, v in raw_counts.items():
             key = str(k).strip()
-            if key and key.lower() not in ('nan', 'none', 'nat', ''):
-                counts[key] = int(v)
+            if not key or key.lower() in ('nan', 'none', 'nat', ''):
+                continue
+            if key[:3].upper() in EXCLUDED_IMDRF_L1_PREFIXES:
+                continue
+            counts[key] = int(v)
         return counts
 
     return {

@@ -688,50 +688,6 @@
                 </div>
             </div>
 
-            <div class="bulk-download-section" style="margin-top: 40px;">
-                <h2 class="section-title">
-                    <i class="fas fa-download"></i>
-                    Bulk MAUDE Download (All Records)
-                </h2>
-                <p style="color: var(--text-secondary); margin-bottom: 18px;">
-                    Fetch all MAUDE records for a product code and date range using the openFDA API. Large exports can take several minutes.
-                </p>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px;">
-                    <div class="form-group">
-                        <label for="bulkProductCode">
-                            <i class="fas fa-barcode"></i> Product Code
-                        </label>
-                        <input type="text" id="bulkProductCode" placeholder="e.g., ABC" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem; background: var(--input-bg); color: var(--text-primary);">
-                    </div>
-                    <div class="form-group">
-                        <label for="bulkDateFrom">
-                            <i class="fas fa-calendar"></i> Date From
-                        </label>
-                        <input type="date" id="bulkDateFrom" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem; background: var(--input-bg); color: var(--text-primary);">
-                    </div>
-                    <div class="form-group">
-                        <label for="bulkDateTo">
-                            <i class="fas fa-calendar"></i> Date To
-                        </label>
-                        <input type="date" id="bulkDateTo" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 0.95rem; background: var(--input-bg); color: var(--text-primary);">
-                    </div>
-                    <div class="form-group">
-                        <label for="bulkFormat">
-                            <i class="fas fa-file-csv"></i> Format
-                        </label>
-                        <select id="bulkFormat">
-                            <option value="csv" selected>CSV</option>
-                        </select>
-                    </div>
-                </div>
-                <button class="analyze-btn show" id="bulkDownloadBtn" style="margin-top: 6px;">
-                    <i class="fas fa-cloud-download-alt"></i> Download All Records
-                </button>
-                <div id="bulkProgress" style="display: none; margin-top: 12px; background: var(--progress-bg); border-radius: 999px; overflow: hidden; height: 12px;">
-                    <div id="bulkProgressFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #60a5fa, #34d399); transition: width 0.4s ease;"></div>
-                </div>
-                <div id="bulkDownloadStatus" class="status" style="margin-top: 16px;"></div>
-            </div>
         </div>
     </div>
 
@@ -761,15 +717,6 @@
         const status = document.getElementById('status');
         const resultsSection = document.getElementById('resultsSection');
         const levelRadios = document.querySelectorAll('input[name="imdrfLevel"]');
-        const bulkProductCode = document.getElementById('bulkProductCode');
-        const bulkDateFrom = document.getElementById('bulkDateFrom');
-        const bulkDateTo = document.getElementById('bulkDateTo');
-        const bulkFormat = document.getElementById('bulkFormat');
-        const bulkDownloadBtn = document.getElementById('bulkDownloadBtn');
-        const bulkDownloadStatus = document.getElementById('bulkDownloadStatus');
-        const bulkProgress = document.getElementById('bulkProgress');
-        const bulkProgressFill = document.getElementById('bulkProgressFill');
-        let bulkLastProcessed = 0;
         const topCodesSection = document.getElementById('topCodesSection');
         const topCodesBtn = document.getElementById('topCodesBtn');
         const topCodesChart = document.getElementById('topCodesChart');
@@ -841,20 +788,6 @@
                 throw new Error('Session expired. Please log in again.');
             }
             throw new Error('Unexpected response from server. Please try again.');
-        }
-
-        function showBulkStatus(message, type) {
-            bulkDownloadStatus.textContent = message;
-            bulkDownloadStatus.className = `status ${type} show`;
-        }
-
-        function hideBulkStatus() {
-            bulkDownloadStatus.className = 'status';
-        }
-
-        function updateBulkProgress(percent) {
-            bulkProgress.style.display = 'block';
-            bulkProgressFill.style.width = `${percent}%`;
         }
 
         async function refreshPreparedData(level) {
@@ -1133,118 +1066,6 @@
             } finally {
                 analyzeBtn.disabled = false;
                 analyzeBtn.innerHTML = '<i class="fas fa-chart-bar"></i> Analyze Trends';
-            }
-        });
-
-        bulkDownloadBtn.addEventListener('click', async () => {
-            const productCode = bulkProductCode.value.trim();
-            const fromDate = bulkDateFrom.value;
-            const toDate = bulkDateTo.value;
-            const format = bulkFormat.value || 'csv';
-
-            if (!productCode || !fromDate || !toDate) {
-                showBulkStatus('❌ Please provide product code, date from, and date to.', 'error');
-                return;
-            }
-
-            bulkDownloadBtn.disabled = true;
-            bulkDownloadBtn.innerHTML = '<span class="spinner"></span> Preparing download...';
-            bulkLastProcessed = 0;
-            updateBulkProgress(5);
-            showBulkStatus('Fetching records from openFDA. This may take a while...', 'info');
-
-            try {
-                const response = await fetch('/api/maude/export', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        product_code: productCode,
-                        date_from: fromDate,
-                        date_to: toDate,
-                        format: format,
-                        async: true
-                    })
-                });
-
-                if (response.status === 202) {
-                    const payload = await response.json();
-                    const statusUrl = payload.status_url;
-                    const downloadUrl = payload.download_url;
-                    const pollInterval = 4000;
-                    const maxAttempts = 300;
-                    let attempts = 0;
-
-                    const poll = async () => {
-                        attempts += 1;
-                        try {
-                            const statusResp = await fetch(statusUrl);
-                            const statusData = await statusResp.json();
-                            if (statusData.status === 'running') {
-                                if (statusData.total) {
-                                    const processed = statusData.processed || 0;
-                                    const percent = Math.min(99, Math.floor(processed / statusData.total * 100));
-                                    updateBulkProgress(percent);
-                                    showBulkStatus(`Fetching records... ${percent}% (${processed}/${statusData.total})`, 'info');
-                                } else {
-                                    const processed = statusData.processed || 0;
-                                    if (processed > bulkLastProcessed) {
-                                        bulkLastProcessed = processed;
-                                    }
-                                    const scanned = statusData.scanned || 0;
-                                    updateBulkProgress(Math.min(99, scanned > 0 ? 60 : 10));
-                                    showBulkStatus(`Fetching records... ${bulkLastProcessed} processed (${scanned} scanned)`, 'info');
-                                }
-                            }
-                            if (statusData.status === 'done') {
-                                const fileResp = await fetch(downloadUrl);
-                                const blob = await fileResp.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = `maude_${productCode}_${fromDate}_${toDate}.csv`;
-                                document.body.appendChild(link);
-                                link.click();
-                                link.remove();
-                                window.URL.revokeObjectURL(url);
-                                updateBulkProgress(100);
-                                showBulkStatus('✅ Download started. Check your downloads folder.', 'success');
-                                return;
-                            }
-                            if (statusData.status === 'failed') {
-                                updateBulkProgress(0);
-                                showBulkStatus(`❌ ${statusData.error || 'Download failed.'}`, 'error');
-                                return;
-                            }
-                            if (attempts < maxAttempts) {
-                                setTimeout(poll, pollInterval);
-                            } else {
-                                updateBulkProgress(0);
-                                showBulkStatus('❌ Download is taking too long. Please try again.', 'error');
-                            }
-                        } catch (error) {
-                            showBulkStatus(`❌ ${error.message}`, 'error');
-                        }
-                    };
-
-                    setTimeout(poll, pollInterval);
-                } else if (!response.ok) {
-                    let errorMessage = 'Download failed.';
-                    try {
-                        const errorData = await response.json();
-                        errorMessage = errorData.error || errorMessage;
-                    } catch (e) {
-                        errorMessage = 'Download failed.';
-                    }
-                    showBulkStatus(`❌ ${errorMessage}`, 'error');
-                    return;
-                }
-            } catch (error) {
-                showBulkStatus(`❌ ${error.message}`, 'error');
-            } finally {
-                bulkDownloadBtn.disabled = false;
-                bulkDownloadBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Download All Records';
             }
         });
 

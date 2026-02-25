@@ -54,10 +54,8 @@ tmpclaude-*
 *.swp
 *.swo
 
-# Alternative requirement files (only requirements.txt is used)
+# Alternative requirement files (only requirements.txt is used by Vercel)
 requirements-dev.txt
-requirements-minimal.txt
-requirements-vercel.txt
 
 # Development scripts
 run.py
