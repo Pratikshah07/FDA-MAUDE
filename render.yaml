@@ -24,4 +24,4 @@ services:
         sync: false
       - key: FIREBASE_APP_ID
         sync: false
-    healthCheckPath: /login
+    healthCheckPath: /health

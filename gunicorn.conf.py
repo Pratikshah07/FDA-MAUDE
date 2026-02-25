@@ -6,9 +6,11 @@ Settings here are overridden by explicit CLI flags, so this acts as a safe basel
 import os
 
 # Worker configuration
+# gthread: single process, multiple threads — health check is never blocked
+# by a long-running pipeline job because threads handle requests concurrently.
 workers = 1
-worker_class = "sync"
-threads = 1
+worker_class = "gthread"
+threads = 4
 
 # Timeouts
 timeout = 600

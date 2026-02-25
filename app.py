@@ -300,6 +300,15 @@ def process_download(job_id):
     )
 
 
+@app.route('/health')
+def health_check():
+    """Lightweight health check endpoint for Render.com.
+    Returns plain-text 200 immediately — no template rendering, no DB calls.
+    Render uses this to determine whether the service is ready.
+    """
+    return 'ok', 200, {'Content-Type': 'text/plain'}
+
+
 # Authentication Routes
 @app.route('/login')
 def login():
