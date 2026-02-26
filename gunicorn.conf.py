@@ -20,10 +20,13 @@ loglevel = "info"
 accesslog = "-"   # stdout
 errorlog = "-"    # stderr
 
-# Performance: do NOT preload the app
-# Preloading forces all heavy imports to happen before the port is bound,
-# which causes Render's health checker to time out on cold starts.
-preload_app = False
+# Preload the app in the master process so workers fork() from already-loaded
+# memory (copy-on-write). This avoids each worker independently importing all
+# modules, which on Render's free tier (512 MB RAM) causes the OS OOM-killer
+# to silently terminate workers before they can serve any requests.
+# The /health endpoint responds instantly after fork, so Render's health check
+# no longer times out.
+preload_app = True
 
 # Bind address (Render passes PORT via environment)
 bind = "0.0.0.0:{}".format(os.environ.get("PORT", "8000"))
