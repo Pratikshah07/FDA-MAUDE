@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements-dev.txt
-    startCommand: gunicorn -b 0.0.0.0:$PORT app:app
+    startCommand: gunicorn --preload --workers 1 --worker-class sync --timeout 600 --bind 0.0.0.0:$PORT app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
