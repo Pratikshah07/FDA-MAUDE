@@ -180,18 +180,24 @@ def explode_imdrf_prefixes(df, imdrf_col, date_col, level=1):
     return df_exploded
 
 
-def aggregate_by_grain(df, date_col, grain='W'):
+def aggregate_by_grain(df, date_col, grain='ME'):
     """
     Aggregate counts by date grain.
 
     Args:
         df: DataFrame with parsed dates
         date_col: Name of the parsed date column
-        grain: 'D' (daily), 'W' (weekly), 'M' (monthly)
+        grain: pandas resample frequency — use 'ME' (monthly), 'QE' (quarterly).
+               Legacy aliases 'M' and 'Q' are automatically mapped to their
+               pandas 2.2+ equivalents.
 
     Returns:
         Series with date index and counts
     """
+    # Map legacy frequency aliases to pandas 2.2+ equivalents
+    _grain_map = {'M': 'ME', 'Q': 'QE'}
+    grain = _grain_map.get(grain, grain)
+
     df = df[df[date_col].notna()].copy()
 
     if df.empty:
@@ -377,13 +383,17 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M
     if df_selected.empty:
         raise ValueError(f"No data found for selected manufacturers with prefix '{selected_prefix}'")
 
+    # Map legacy frequency aliases to pandas 2.2+ equivalents for resample/date_range
+    _grain_map = {'M': 'ME', 'Q': 'QE'}
+    pandas_grain = _grain_map.get(grain, grain)
+
     # Create time-series for each manufacturer
     manufacturer_series = {}
     all_dates = set()
 
     for mfr in selected_manufacturers:
         df_mfr = df_selected[df_selected[mfr_col] == mfr]
-        mfr_counts = aggregate_by_grain(df_mfr, 'parsed_date', grain)
+        mfr_counts = aggregate_by_grain(df_mfr, 'parsed_date', pandas_grain)
         manufacturer_series[mfr] = mfr_counts
         if len(mfr_counts) > 0:
             all_dates.update(mfr_counts.index)
@@ -393,7 +403,7 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M
         date_range = pd.date_range(
             start=min(all_dates),
             end=max(all_dates),
-            freq=grain
+            freq=pandas_grain
         )
 
         # Reindex each manufacturer series to fill gaps with 0
