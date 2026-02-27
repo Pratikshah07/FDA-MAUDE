@@ -1207,6 +1207,11 @@
         // ── Populate codes after prepare response ────────────────────────
         function applyPreparedData(data) {
             preparedData = data;
+            // Clear any previous analysis results so old graphs don't mislead
+            resultsSection.classList.remove('show');
+            manufacturerSelectGroup.style.display = 'none';
+            analyzeBtn.classList.remove('show');
+            selectedManufacturers = [];
             prefixLabel.innerHTML = `<i class="fas fa-code"></i> ${levelLabels[currentLevel]}`;
             prefixSelect.innerHTML = '<option value="">Select a code...</option>';
             const prefixCounts = data.prefix_counts || {};
