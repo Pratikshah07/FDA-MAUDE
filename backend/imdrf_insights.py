@@ -328,7 +328,7 @@ def find_column(df, target):
     return None
 
 
-def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='W', threshold_k=2.0, level=1):
+def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M', level=1):
     """
     Perform IMDRF prefix insights analysis.
 
@@ -336,14 +336,12 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='W
         df: DataFrame with exploded IMDRF prefixes and parsed dates
         selected_prefix: IMDRF prefix to analyze (e.g., "A05" for Level-1, "A0501" for Level-2)
         selected_manufacturers: List of manufacturer names to compare
-        grain: Date aggregation grain ('D', 'W', 'M')
-        threshold_k: Standard deviation multiplier for thresholds
-        level: 1, 2, or 3 - IMDRF analysis level (affects universal mean calculation)
+        grain: Date aggregation grain ('M' monthly, 'Q' quarterly)
+        level: 1, 2, or 3 - IMDRF analysis level
 
     Returns:
         dict with analysis results including:
-        - universal_mean: Mean across all IMDRF events at the specified level
-        - prefix_mean: Mean for selected prefix
+        - threshold: Percentage share of selected code vs all codes in dataset
         - manufacturer_series: Dict of time-series per manufacturer
         - date_range: Complete date range for plotting
         - statistics: Summary statistics per manufacturer
@@ -364,24 +362,14 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='W
     if df_with_dates.empty:
         raise ValueError("No valid dates found in dataset")
 
-    # A) Universal mean baseline (all IMDRF-coded events, all prefixes)
-    universal_counts = aggregate_by_grain(df_with_dates, 'parsed_date', grain)
-    universal_mean = float(universal_counts.mean()) if len(universal_counts) > 0 else 0.0
-
-    # Filter to selected prefix
+    # Calculate threshold: (total count of selected code / total all codes) × 100
+    total_all_codes = len(df_with_dates)
     df_prefix = df_with_dates[df_with_dates['imdrf_prefix'] == selected_prefix].copy()
+    total_selected_code = len(df_prefix)
+    threshold = round((total_selected_code / total_all_codes * 100) if total_all_codes > 0 else 0.0, 4)
 
     if df_prefix.empty:
         raise ValueError(f"No data found for prefix '{selected_prefix}'")
-
-    # B) Prefix-specific mean baseline (selected prefix, all manufacturers)
-    prefix_counts = aggregate_by_grain(df_prefix, 'parsed_date', grain)
-    prefix_mean = float(prefix_counts.mean()) if len(prefix_counts) > 0 else 0.0
-    prefix_std = float(prefix_counts.std()) if len(prefix_counts) > 0 else 0.0
-
-    # Calculate thresholds
-    upper_threshold = prefix_mean + threshold_k * prefix_std
-    lower_threshold = max(0.0, prefix_mean - threshold_k * prefix_std)
 
     # Filter to selected manufacturers
     df_selected = df_prefix[df_prefix[mfr_col].isin(selected_manufacturers)].copy()
@@ -434,11 +422,9 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='W
     level_label = LEVEL_CONFIG.get(level, {}).get('label', f'Level-{level}')
 
     return {
-        "universal_mean": round(universal_mean, 2),
-        "prefix_mean": round(prefix_mean, 2),
-        "prefix_std": round(prefix_std, 2),
-        "upper_threshold": round(upper_threshold, 2),
-        "lower_threshold": round(lower_threshold, 2),
+        "threshold": threshold,
+        "total_selected_code": total_selected_code,
+        "total_all_codes": total_all_codes,
         "manufacturer_series": manufacturer_series,
         "date_range": date_range,
         "statistics": statistics,
@@ -523,6 +509,11 @@ def prepare_data_for_insights(file_path, level=1):
 
     # Filter to rows with valid dates
     df_with_dates = df_exploded[df_exploded['parsed_date'].notna()].copy()
+
+    # Exclude A24 and A25 codes (and their sub-codes at level 2/3) from all analysis
+    df_with_dates = df_with_dates[
+        ~df_with_dates['imdrf_prefix'].str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
+    ].copy()
 
     if df_with_dates.empty:
         sample_values = df[date_col].head(5).tolist()

@@ -190,6 +190,260 @@
             backdrop-filter: blur(10px);
         }
 
+        /* ── Source toggle (Upload vs Fetch) ────────────────── */
+        .source-toggle {
+            display: flex;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 22px;
+            background: var(--input-bg);
+        }
+        .source-tab {
+            flex: 1;
+            padding: 11px 16px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: inherit;
+        }
+        .source-tab.active {
+            background: var(--primary);
+            color: white;
+        }
+        .source-tab:not(.active):hover {
+            background: var(--level-selected-bg);
+            color: var(--text-primary);
+        }
+        .source-panel { display: none; }
+        .source-panel.active { display: block; }
+
+        /* ── Inline upload area (inside fetch section) ───────── */
+        .insight-upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 30px 20px;
+            text-align: center;
+            background: var(--upload-bg);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .insight-upload-area:hover, .insight-upload-area.drag-over {
+            border-color: var(--primary);
+            background: var(--upload-hover-bg);
+        }
+        .insight-upload-area input[type="file"] {
+            position: absolute; inset: 0; opacity: 0; cursor: pointer;
+        }
+        .insight-upload-icon { font-size: 2.4rem; color: var(--primary); margin-bottom: 10px; }
+        .insight-upload-text { font-size: 0.98rem; font-weight: 500; color: var(--text-primary); margin-bottom: 4px; }
+        .insight-upload-hint { font-size: 0.82rem; color: var(--text-secondary); }
+        .insight-file-info {
+            display: none;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: var(--input-bg);
+            border: 2px solid rgba(37,99,235,0.3);
+            border-radius: 10px;
+            margin-top: 12px;
+        }
+        .insight-file-info.show { display: flex; }
+        .insight-file-remove {
+            background: var(--error); color: white; border: none;
+            border-radius: 50%; width: 32px; height: 32px;
+            cursor: pointer; flex-shrink: 0; font-size: 0.85rem;
+        }
+
+        /* ── Text / date inputs (same style as select) ──────── */
+        input[type="text"], input[type="date"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: border-color 0.3s ease, box-shadow 0.2s ease;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            font-family: inherit;
+        }
+        input[type="text"]:focus, input[type="date"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+        select:focus, input[type="number"]:focus {
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+
+        /* ── Fetch section panel ─────────────────────────────── */
+        .fetch-section {
+            background: linear-gradient(135deg, rgba(37,99,235,0.04) 0%, rgba(99,102,241,0.04) 100%);
+            border: 1px solid rgba(37,99,235,0.18);
+            border-left: 4px solid var(--primary);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        .fetch-inputs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 10px;
+        }
+
+        .date-hint {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            color: #92400e;
+            background: rgba(245,158,11,0.1);
+            border: 1px solid rgba(245,158,11,0.3);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 18px;
+        }
+        [data-theme="dark"] .date-hint { color: #fcd34d; background: rgba(245,158,11,0.08); }
+
+        /* ── Fetch button (always visible) ───────────────────── */
+        .fetch-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 13px 28px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(37,99,235,0.3);
+            font-family: inherit;
+        }
+        .fetch-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37,99,235,0.4); }
+        .fetch-btn:disabled { background: var(--btn-disabled-bg); cursor: not-allowed; transform: none; box-shadow: none; }
+
+        /* ── Progress steps ──────────────────────────────────── */
+        .fetch-progress-bar {
+            display: flex;
+            align-items: center;
+            margin-top: 20px;
+            padding: 16px 20px;
+            background: var(--upload-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        .fp-step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+        .fp-step-icon {
+            width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.05rem;
+            border: 2px solid var(--border);
+            background: var(--card-bg);
+            color: var(--text-secondary);
+            transition: all 0.35s ease;
+        }
+        .fp-step-icon.active {
+            border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.1);
+            box-shadow: 0 0 0 4px rgba(245,158,11,0.15);
+            animation: fp-pulse 1.2s ease-in-out infinite;
+        }
+        .fp-step-icon.done { border-color: #10b981; color: #10b981; background: rgba(16,185,129,0.1); }
+        @keyframes fp-pulse {
+            0%,100% { box-shadow: 0 0 0 4px rgba(245,158,11,0.15); }
+            50% { box-shadow: 0 0 0 8px rgba(245,158,11,0.05); }
+        }
+        .fp-step-label { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-align: center; white-space: nowrap; margin-top: 2px; }
+        .fp-connector { flex: 1; height: 2px; background: var(--border); min-width: 28px; margin-bottom: 22px; transition: background 0.4s ease; }
+        .fp-connector.done { background: #10b981; }
+
+        /* ── Section divider ──────────────────────────────────── */
+        .section-divider {
+            display: flex; align-items: center; gap: 12px;
+            margin: 28px 0 20px;
+            color: var(--text-secondary);
+            font-size: 0.78rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.08em;
+        }
+        .section-divider::before, .section-divider::after { content:''; flex:1; height:1px; background: var(--border); }
+
+        /* ── Level cards ─────────────────────────────────────── */
+        .level-options { display: flex; gap: 14px; flex-wrap: wrap; }
+        .level-option { flex: 1; min-width: 170px; cursor: pointer; }
+        .level-card {
+            padding: 16px 18px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            background: var(--input-bg);
+            transition: all 0.25s ease;
+            user-select: none;
+        }
+        .level-card:hover { border-color: rgba(37,99,235,0.4); background: var(--level-selected-bg); }
+        .level-card.selected { border-color: var(--primary); background: var(--level-selected-bg); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .level-card-title { font-weight: 600; color: var(--text-primary); margin-bottom: 5px; display: flex; align-items: center; gap: 7px; }
+        .level-card-sub { font-size: 0.82rem; color: var(--text-secondary); }
+
+        /* ── Controls panel ──────────────────────────────────── */
+        .controls-section {
+            background: var(--upload-bg);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px;
+            margin-bottom: 16px;
+        }
+
+        /* ── Manufacturer panel ──────────────────────────────── */
+        .manufacturer-section {
+            background: var(--upload-bg);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            margin-top: 16px;
+        }
+        .manufacturer-checkboxes {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            background: var(--card-bg);
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 4px;
+        }
+        .mfr-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 8px; border-radius: 6px;
+            cursor: pointer; transition: background 0.15s;
+            font-size: 0.88rem; color: var(--text-primary);
+        }
+        .mfr-item:hover { background: var(--level-selected-bg); }
+        .mfr-item input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+
+        /* ── Top codes panel ─────────────────────────────────── */
+        .top-codes-section {
+            background: var(--upload-bg);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px;
+            margin-top: 16px;
+        }
+
         .upload-section {
             margin-bottom: 30px;
         }
@@ -521,135 +775,179 @@
         </div>
 
         <div class="main-card">
-            <!-- IMDRF Level Selector -->
-            <div class="level-selector-section" style="margin-bottom: 25px;">
-                <h2 class="section-title">
-                    <i class="fas fa-layer-group"></i>
-                    Select IMDRF Analysis Level
-                </h2>
-                <div class="level-options" style="display: flex; gap: 15px; flex-wrap: wrap;">
-                    <label class="level-option" style="flex: 1; min-width: 200px; cursor: pointer;">
-                        <input type="radio" name="imdrfLevel" value="1" checked style="display: none;">
-                        <div class="level-card" style="padding: 15px; border: 2px solid var(--border); border-radius: 10px; background: var(--input-bg); transition: all 0.3s ease;">
-                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 5px;">
-                                <i class="fas fa-check-circle" style="color: var(--primary); margin-right: 5px;"></i>
-                                Level-1 (3 characters)
-                            </div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                                e.g., A05, E24 - Broad category analysis
-                            </div>
-                        </div>
-                    </label>
-                    <label class="level-option" style="flex: 1; min-width: 200px; cursor: pointer;">
-                        <input type="radio" name="imdrfLevel" value="2" style="display: none;">
-                        <div class="level-card" style="padding: 15px; border: 2px solid var(--border); border-radius: 10px; background: var(--input-bg); transition: all 0.3s ease;">
-                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 5px;">
-                                <i class="fas fa-circle" style="color: var(--text-secondary); margin-right: 5px;"></i>
-                                Level-2 (5 characters)
-                            </div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                                e.g., A0501, E2401 - Subcategory analysis
-                            </div>
-                        </div>
-                    </label>
-                    <label class="level-option" style="flex: 1; min-width: 200px; cursor: pointer;">
-                        <input type="radio" name="imdrfLevel" value="3" style="display: none;">
-                        <div class="level-card" style="padding: 15px; border: 2px solid var(--border); border-radius: 10px; background: var(--input-bg); transition: all 0.3s ease;">
-                            <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 5px;">
-                                <i class="fas fa-circle" style="color: var(--text-secondary); margin-right: 5px;"></i>
-                                Level-3 (7 characters)
-                            </div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                                e.g., A050101 - Detailed code analysis
-                            </div>
-                        </div>
-                    </label>
-                </div>
-            </div>
 
-            <div class="upload-section">
+            <!-- ── Step 1: Data Source ────────────────────────────────── -->
+            <div class="fetch-section">
                 <h2 class="section-title">
-                    <i class="fas fa-file-csv"></i>
-                    Upload Cleaned MAUDE CSV
+                    <i class="fas fa-database"></i>
+                    Data Source
                 </h2>
 
-                <div class="file-upload-area" id="fileUploadArea">
-                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                    <div class="upload-text">Click to upload cleaned MAUDE file</div>
-                    <div class="upload-hint">Accepts CSV, XLS, or XLSX files with IMDRF Code, Manufacturer, and date columns</div>
-                    <input type="file" id="csvFile" accept=".csv,.xlsx,.xls">
-                </div>
-
-                <div class="file-info" id="fileInfo">
-                    <i class="fas fa-file-csv" style="font-size: 2rem; color: var(--primary);"></i>
-                    <div style="flex: 1;">
-                        <div id="fileName" style="font-weight: 600; color: var(--text-primary);"></div>
-                        <div id="fileSize" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
-                        <div id="levelInfo" style="font-size: 0.85rem; color: var(--primary); font-weight: 500;"></div>
-                    </div>
-                    <button type="button" id="removeFile" style="background: var(--error); color: white; border: none; border-radius: 50%; width: 35px; height: 35px; cursor: pointer;">
-                        <i class="fas fa-times"></i>
+                <!-- Toggle tabs -->
+                <div class="source-toggle">
+                    <button class="source-tab active" id="tabUpload" type="button">
+                        <i class="fas fa-upload"></i> Upload Cleaned File
+                    </button>
+                    <button class="source-tab" id="tabFetch" type="button">
+                        <i class="fas fa-cloud-download-alt"></i> Fetch from FDA MAUDE
                     </button>
                 </div>
 
-                <div id="downloadCountsTop" style="display: none; margin-top: 12px;">
-                    <button type="button" class="analyze-btn" id="downloadCountsAllBtn" style="padding: 10px; font-size: 0.95rem;">
+                <!-- ── Panel A: Upload ───────────────────────────────── -->
+                <div class="source-panel active" id="panelUpload">
+                    <div class="insight-upload-area" id="insightUploadArea">
+                        <i class="fas fa-file-upload insight-upload-icon"></i>
+                        <div class="insight-upload-text">Click or drag &amp; drop your cleaned MAUDE file</div>
+                        <div class="insight-upload-hint">Accepts CSV, XLS, or XLSX with IMDRF Code, Manufacturer &amp; date columns</div>
+                        <input type="file" id="insightFileInput" accept=".csv,.xlsx,.xls">
+                    </div>
+                    <div class="insight-file-info" id="insightFileInfo">
+                        <i class="fas fa-file-csv" style="font-size:2rem; color:var(--primary); flex-shrink:0;"></i>
+                        <div style="flex:1; min-width:0;">
+                            <div id="insightFileName" style="font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                            <div id="insightFileSize" style="font-size:0.83rem; color:var(--text-secondary);"></div>
+                        </div>
+                        <button class="insight-file-remove" id="insightFileRemove" title="Remove file">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ── Panel B: Fetch ────────────────────────────────── -->
+                <div class="source-panel" id="panelFetch">
+                    <div class="fetch-inputs-grid">
+                        <div class="form-group">
+                            <label for="insightProductCode"><i class="fas fa-barcode"></i> Product Code</label>
+                            <input type="text" id="insightProductCode" placeholder="e.g., FRY">
+                        </div>
+                        <div class="form-group">
+                            <label for="insightDateFrom"><i class="fas fa-calendar-alt"></i> Date From</label>
+                            <input type="date" id="insightDateFrom">
+                        </div>
+                        <div class="form-group">
+                            <label for="insightDateTo"><i class="fas fa-calendar-alt"></i> Date To</label>
+                            <input type="date" id="insightDateTo">
+                        </div>
+                    </div>
+                    <div class="date-hint">
+                        <i class="fas fa-info-circle"></i>
+                        Enter a date range spanning <strong>&nbsp;at least 1 year&nbsp;</strong> for meaningful trend analysis.
+                    </div>
+                    <button class="fetch-btn" id="fetchDataBtn">
+                        <i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data
+                    </button>
+                    <!-- Fetch progress -->
+                    <div id="fetchProgress" style="display: none;">
+                        <div class="fetch-progress-bar">
+                            <div class="fp-step" id="fStep1">
+                                <div class="fp-step-icon"><i class="fas fa-download"></i></div>
+                                <div class="fp-step-label">Download</div>
+                            </div>
+                            <div class="fp-connector" id="fConn1"></div>
+                            <div class="fp-step" id="fStep2">
+                                <div class="fp-step-icon"><i class="fas fa-broom"></i></div>
+                                <div class="fp-step-label">Clean</div>
+                            </div>
+                            <div class="fp-connector" id="fConn2"></div>
+                            <div class="fp-step" id="fStep3">
+                                <div class="fp-step-icon"><i class="fas fa-code"></i></div>
+                                <div class="fp-step-label">Extract Codes</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Step 2 & 3: Shown after fetch ─────────────────────── -->
+            <div id="postFetchSection" style="display: none;">
+
+                <div class="section-divider"><i class="fas fa-layer-group"></i> IMDRF Analysis Level</div>
+
+                <div class="level-selector-section">
+                    <div class="level-options">
+                        <label class="level-option">
+                            <input type="radio" name="imdrfLevel" value="1" checked style="display: none;">
+                            <div class="level-card selected">
+                                <div class="level-card-title">
+                                    <i class="fas fa-check-circle" style="color: var(--primary);"></i>
+                                    Level-1 &nbsp;<span style="font-weight:400;font-size:0.82rem;color:var(--text-secondary);">(3 chars)</span>
+                                </div>
+                                <div class="level-card-sub">e.g., A05, E24 — Broad category</div>
+                            </div>
+                        </label>
+                        <label class="level-option">
+                            <input type="radio" name="imdrfLevel" value="2" style="display: none;">
+                            <div class="level-card">
+                                <div class="level-card-title">
+                                    <i class="fas fa-circle" style="color: var(--text-secondary);"></i>
+                                    Level-2 &nbsp;<span style="font-weight:400;font-size:0.82rem;color:var(--text-secondary);">(5 chars)</span>
+                                </div>
+                                <div class="level-card-sub">e.g., A0501 — Subcategory</div>
+                            </div>
+                        </label>
+                        <label class="level-option">
+                            <input type="radio" name="imdrfLevel" value="3" style="display: none;">
+                            <div class="level-card">
+                                <div class="level-card-title">
+                                    <i class="fas fa-circle" style="color: var(--text-secondary);"></i>
+                                    Level-3 &nbsp;<span style="font-weight:400;font-size:0.82rem;color:var(--text-secondary);">(7 chars)</span>
+                                </div>
+                                <div class="level-card-sub">e.g., A050101 — Detailed code</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="section-divider"><i class="fas fa-code"></i> Code Selection</div>
+
+                <div class="controls-section show" id="controlsSection">
+                    <div class="form-group">
+                        <label for="prefixSelect" id="prefixLabel">
+                            <i class="fas fa-code"></i> IMDRF Code
+                        </label>
+                        <select id="prefixSelect">
+                            <option value="">Select a code...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="grainSelect"><i class="fas fa-layer-group"></i> Date Aggregation</label>
+                        <select id="grainSelect">
+                            <option value="M" selected>Monthly</option>
+                            <option value="Q">Quarterly</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="downloadCountsTop" style="display: none; margin-top: 14px;">
+                    <button type="button" class="analyze-btn show" id="downloadCountsAllBtn">
                         <i class="fas fa-file-excel"></i> Download IMDRF Code Counts (All Levels)
                     </button>
                 </div>
-            </div>
 
-            <div class="controls-section" id="controlsSection">
-                <div class="form-group">
-                    <label for="prefixSelect" id="prefixLabel">
-                        <i class="fas fa-code"></i> IMDRF Code
-                    </label>
-                    <select id="prefixSelect">
-                        <option value="">Select a code...</option>
-                    </select>
-                </div>
+            </div><!-- /#postFetchSection -->
 
-                <div class="form-group">
-                    <label for="grainSelect">
-                        <i class="fas fa-calendar"></i> Date Aggregation
-                    </label>
-                    <select id="grainSelect">
-                        <option value="D">Daily</option>
-                        <option value="W" selected>Weekly</option>
-                        <option value="M">Monthly</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="thresholdInput">
-                        <i class="fas fa-sliders-h"></i> Threshold (k)
-                    </label>
-                    <input type="number" id="thresholdInput" min="0.5" max="5" step="0.1" value="2.0">
-                </div>
-            </div>
-
-            <div class="form-group" id="manufacturerSelectGroup" style="display: none; margin-top: 20px;">
-                <label>
+            <!-- ── Manufacturer + Top Codes (shown after code select) ── -->
+            <div class="manufacturer-section" id="manufacturerSelectGroup" style="display: none;">
+                <label style="margin-bottom: 0; font-size: 1rem;">
                     <i class="fas fa-industry"></i> Select Manufacturers
                 </label>
-                <div id="manufacturerCheckboxes" style="max-height: 200px; overflow-y: auto; border: 2px solid var(--border); border-radius: 8px; padding: 15px; background: var(--input-bg);">
+                <div class="manufacturer-checkboxes" id="manufacturerCheckboxes"></div>
+            </div>
+
+            <div class="top-codes-section" id="topCodesSection" style="display: none;">
+                <h3 class="section-title">
+                    <i class="fas fa-ranking-star"></i>
+                    Top 5 Frequent Codes
+                </h3>
+                <button class="analyze-btn show" id="topCodesBtn" style="margin-bottom: 16px;">
+                    <i class="fas fa-bolt"></i> Generate Top 5 Chart
+                </button>
+                <div class="chart-container">
+                    <div id="topCodesChart"></div>
                 </div>
             </div>
 
-                <div class="top-codes-section" id="topCodesSection" style="display: none; margin-top: 20px;">
-                    <h3 class="section-title">
-                        <i class="fas fa-ranking-star"></i>
-                        Top 5 Frequent Codes (Auto)
-                    </h3>
-                    <button class="analyze-btn show" id="topCodesBtn" style="margin-bottom: 14px;">
-                        <i class="fas fa-bolt"></i> Generate Top 5 Chart
-                    </button>
-                    <div class="chart-container">
-                        <div id="topCodesChart"></div>
-                    </div>
-                </div>
-
-            <button class="analyze-btn" id="analyzeBtn">
+            <button class="analyze-btn" id="analyzeBtn" style="margin-top: 16px;">
                 <i class="fas fa-chart-bar"></i> Analyze Trends
             </button>
 
@@ -678,7 +976,6 @@
                             <tr>
                                 <th>Manufacturer</th>
                                 <th>Total Events</th>
-                                <th>Mean per Period</th>
                                 <th>Max per Period</th>
                                 <th>Periods with Events</th>
                             </tr>
@@ -692,23 +989,16 @@
     </div>
 
     <script>
-        let uploadedFile = null;
         let preparedData = null;
         let selectedManufacturers = [];
         let currentLevel = 1;
+        let _fetchJobId = null;
+        let _fetchPollTimer = null;
 
-        const fileInput = document.getElementById('csvFile');
-        const fileUploadArea = document.getElementById('fileUploadArea');
-        const fileInfo = document.getElementById('fileInfo');
-        const fileName = document.getElementById('fileName');
-        const fileSize = document.getElementById('fileSize');
-        const levelInfo = document.getElementById('levelInfo');
-        const removeFileBtn = document.getElementById('removeFile');
         const controlsSection = document.getElementById('controlsSection');
         const prefixSelect = document.getElementById('prefixSelect');
         const prefixLabel = document.getElementById('prefixLabel');
         const grainSelect = document.getElementById('grainSelect');
-        const thresholdInput = document.getElementById('thresholdInput');
         const manufacturerSelectGroup = document.getElementById('manufacturerSelectGroup');
         const manufacturerCheckboxes = document.getElementById('manufacturerCheckboxes');
         const analyzeBtn = document.getElementById('analyzeBtn');
@@ -720,6 +1010,99 @@
         const topCodesSection = document.getElementById('topCodesSection');
         const topCodesBtn = document.getElementById('topCodesBtn');
         const topCodesChart = document.getElementById('topCodesChart');
+        const fetchDataBtn = document.getElementById('fetchDataBtn');
+        const fetchProgress = document.getElementById('fetchProgress');
+        const postFetchSection = document.getElementById('postFetchSection');
+        const insightProductCode = document.getElementById('insightProductCode');
+        const insightDateFrom = document.getElementById('insightDateFrom');
+        const insightDateTo = document.getElementById('insightDateTo');
+
+        // Source toggle
+        const tabUpload = document.getElementById('tabUpload');
+        const tabFetch  = document.getElementById('tabFetch');
+        const panelUpload = document.getElementById('panelUpload');
+        const panelFetch  = document.getElementById('panelFetch');
+
+        tabUpload.addEventListener('click', () => {
+            tabUpload.classList.add('active');   tabFetch.classList.remove('active');
+            panelUpload.classList.add('active'); panelFetch.classList.remove('active');
+        });
+        tabFetch.addEventListener('click', () => {
+            tabFetch.classList.add('active');    tabUpload.classList.remove('active');
+            panelFetch.classList.add('active');  panelUpload.classList.remove('active');
+        });
+
+        // ── Upload panel ─────────────────────────────────────────────────
+        const insightUploadArea = document.getElementById('insightUploadArea');
+        const insightFileInput  = document.getElementById('insightFileInput');
+        const insightFileInfo   = document.getElementById('insightFileInfo');
+        const insightFileName   = document.getElementById('insightFileName');
+        const insightFileSize   = document.getElementById('insightFileSize');
+        const insightFileRemove = document.getElementById('insightFileRemove');
+
+        function fmtBytes(b) {
+            if (b === 0) return '0 B';
+            const k = 1024, s = ['B','KB','MB','GB'];
+            const i = Math.floor(Math.log(b) / Math.log(k));
+            return (b / Math.pow(k, i)).toFixed(1) + ' ' + s[i];
+        }
+
+        insightUploadArea.addEventListener('dragover', e => { e.preventDefault(); insightUploadArea.classList.add('drag-over'); });
+        insightUploadArea.addEventListener('dragleave', () => insightUploadArea.classList.remove('drag-over'));
+        insightUploadArea.addEventListener('drop', e => {
+            e.preventDefault();
+            insightUploadArea.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) handleInsightFileUpload(file);
+        });
+
+        insightFileInput.addEventListener('change', e => {
+            if (e.target.files[0]) handleInsightFileUpload(e.target.files[0]);
+        });
+
+        insightFileRemove.addEventListener('click', () => {
+            insightFileInput.value = '';
+            insightFileInfo.classList.remove('show');
+            insightUploadArea.style.display = '';
+            postFetchSection.style.display = 'none';
+            preparedData = null;
+            hideStatus();
+        });
+
+        async function handleInsightFileUpload(file) {
+            const allowed = ['.csv', '.xlsx', '.xls'];
+            const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+            if (!allowed.includes(ext)) {
+                showStatus('❌ Invalid file type. Please upload CSV, XLS, or XLSX.', 'error');
+                return;
+            }
+            insightFileName.textContent = file.name;
+            insightFileSize.textContent = fmtBytes(file.size);
+            insightFileInfo.classList.add('show');
+            insightUploadArea.style.display = 'none';
+            showStatus('Processing file…', 'info');
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('level', currentLevel);
+
+            try {
+                const resp = await fetch('/api/imdrf-insights/prepare', { method: 'POST', body: formData });
+                const data = await parseJsonResponse(resp);
+                if (resp.ok) {
+                    postFetchSection.style.display = 'block';
+                    applyPreparedData(data);
+                } else {
+                    showStatus(`❌ ${data.error}`, 'error');
+                    insightFileInfo.classList.remove('show');
+                    insightUploadArea.style.display = '';
+                }
+            } catch (err) {
+                showStatus(`❌ ${err.message}`, 'error');
+                insightFileInfo.classList.remove('show');
+                insightUploadArea.style.display = '';
+            }
+        }
 
         // Level label mappings
         const levelLabels = {
@@ -733,19 +1116,14 @@
             document.querySelectorAll('.level-option').forEach(option => {
                 const radio = option.querySelector('input[type="radio"]');
                 const card = option.querySelector('.level-card');
-                const icon = card.querySelector('i');
-
+                const icon = card.querySelector('.level-card-title i');
                 if (radio.checked) {
-                    card.style.borderColor = 'var(--primary)';
-                    card.style.background = 'var(--level-selected-bg)';
-                    icon.className = 'fas fa-check-circle';
-                    icon.style.color = 'var(--primary)';
+                    card.classList.add('selected');
+                    if (icon) { icon.className = 'fas fa-check-circle'; icon.style.color = 'var(--primary)'; }
                     currentLevel = parseInt(radio.value);
                 } else {
-                    card.style.borderColor = 'var(--border)';
-                    card.style.background = 'var(--input-bg)';
-                    icon.className = 'fas fa-circle';
-                    icon.style.color = 'var(--text-secondary)';
+                    card.classList.remove('selected');
+                    if (icon) { icon.className = 'fas fa-circle'; icon.style.color = 'var(--text-secondary)'; }
                 }
             });
         }
@@ -760,14 +1138,6 @@
             });
         });
         updateLevelSelection();
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-        }
 
         function showStatus(message, type) {
             status.textContent = message;
@@ -791,11 +1161,9 @@
         }
 
         async function refreshPreparedData(level) {
-            if (!preparedData || !preparedData.file_id) {
-                return;
-            }
+            if (!preparedData || !preparedData.file_id) return;
 
-            showStatus(`Updating to ${levelLabels[level]}...`, 'info');
+            showStatus(`Updating to ${levelLabels[level]}…`, 'info');
             resultsSection.classList.remove('show');
             manufacturerSelectGroup.style.display = 'none';
             analyzeBtn.classList.remove('show');
@@ -804,40 +1172,12 @@
             try {
                 const response = await fetch('/api/imdrf-insights/refresh', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        file_id: preparedData.file_id,
-                        level: level
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_id: preparedData.file_id, level })
                 });
-
                 const data = await parseJsonResponse(response);
-
                 if (response.ok) {
-                    preparedData = data;
-
-                    downloadCountsTop.style.display = 'block';
-
-                    downloadCountsTop.style.display = 'block';
-
-                    levelInfo.textContent = `Analysis Level: ${data.level_label || levelLabels[level]}`;
-                    prefixLabel.innerHTML = `<i class="fas fa-code"></i> ${levelLabels[level]}`;
-
-                    prefixSelect.innerHTML = '<option value="">Select a code...</option>';
-                    const prefixCounts = data.prefix_counts || {};
-                    data.all_prefixes.forEach(prefix => {
-                        const option = document.createElement('option');
-                        option.value = prefix;
-                        const count = prefixCounts[prefix] || 0;
-                        option.textContent = `${prefix} (${count})`;
-                        prefixSelect.appendChild(option);
-                    });
-
-                    controlsSection.classList.add('show');
-                    topCodesSection.style.display = 'block';
-                    showStatus(`✅ Updated to ${data.level_label || 'Level-' + level}: ${data.rows_with_dates} rows with valid dates, ${data.all_prefixes.length} codes found`, 'success');
+                    applyPreparedData(data);
                 } else {
                     showStatus(`❌ Error: ${data.error}`, 'error');
                 }
@@ -846,81 +1186,143 @@
             }
         }
 
-        fileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+        // ── Step indicator helpers ───────────────────────────────────────
+        function setFetchStep(step, state) {
+            const el = document.getElementById(`fStep${step}`);
+            if (!el) return;
+            const icon = el.querySelector('.fp-step-icon');
+            icon.classList.remove('active', 'done');
+            if (state === 'active') icon.classList.add('active');
+            if (state === 'done') icon.classList.add('done');
+            // connector before this step
+            const conn = document.getElementById(`fConn${step - 1}`);
+            if (conn) { conn.classList.toggle('done', state === 'done'); }
+        }
 
-            uploadedFile = file;
-            fileName.textContent = file.name;
-            fileSize.textContent = formatFileSize(file.size);
-            fileInfo.classList.add('show');
-            fileUploadArea.style.display = 'none';
+        function resetFetchSteps() {
+            [1, 2, 3].forEach(s => setFetchStep(s, 'pending'));
+            ['fConn1','fConn2'].forEach(id => { const el = document.getElementById(id); if(el) el.classList.remove('done'); });
+        }
 
-            // Upload and prepare data
-            showStatus('Processing file...', 'info');
+        // ── Populate codes after prepare response ────────────────────────
+        function applyPreparedData(data) {
+            preparedData = data;
+            prefixLabel.innerHTML = `<i class="fas fa-code"></i> ${levelLabels[currentLevel]}`;
+            prefixSelect.innerHTML = '<option value="">Select a code...</option>';
+            const prefixCounts = data.prefix_counts || {};
+            data.all_prefixes.forEach(prefix => {
+                const option = document.createElement('option');
+                option.value = prefix;
+                option.textContent = `${prefix} (${prefixCounts[prefix] || 0})`;
+                prefixSelect.appendChild(option);
+            });
+            downloadCountsTop.style.display = 'block';
+            topCodesSection.style.display = 'block';
+            setFetchStep(3, 'done');
+            showStatus(`✅ Ready — ${data.rows_with_dates.toLocaleString()} rows with valid dates, ${data.all_prefixes.length} codes found at ${data.level_label || 'Level-' + currentLevel}`, 'success');
+        }
 
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('level', currentLevel);
+        // ── Fetch button ─────────────────────────────────────────────────
+        fetchDataBtn.addEventListener('click', async () => {
+            const productCode = insightProductCode.value.trim();
+            const dateFrom = insightDateFrom.value;
+            const dateTo = insightDateTo.value;
 
-            try {
-                const response = await fetch('/api/imdrf-insights/prepare', {
-                    method: 'POST',
-                    body: formData
-                });
+            if (!productCode) { showStatus('❌ Please enter a product code', 'error'); return; }
+            if (!dateFrom || !dateTo) { showStatus('❌ Please select both dates', 'error'); return; }
 
-                const data = await parseJsonResponse(response);
-
-                if (response.ok) {
-                    preparedData = data;
-
-                    // Update level info display
-                    levelInfo.textContent = `Analysis Level: ${data.level_label || levelLabels[currentLevel]}`;
-
-                    // Update prefix label based on level
-                    prefixLabel.innerHTML = `<i class="fas fa-code"></i> ${levelLabels[currentLevel]}`;
-
-                    // Populate prefix dropdown
-                    prefixSelect.innerHTML = '<option value="">Select a code...</option>';
-                    const prefixCounts = data.prefix_counts || {};
-                    data.all_prefixes.forEach(prefix => {
-                        const option = document.createElement('option');
-                        option.value = prefix;
-                        const count = prefixCounts[prefix] || 0;
-                        option.textContent = `${prefix} (${count})`;
-                        prefixSelect.appendChild(option);
-                    });
-
-                    controlsSection.classList.add('show');
-                    topCodesSection.style.display = 'block';
-                    showStatus(`✅ File processed at ${data.level_label || 'Level-' + currentLevel}: ${data.rows_with_dates} rows with valid dates, ${data.all_prefixes.length} codes found`, 'success');
-                } else {
-                    showStatus(`❌ Error: ${data.error}`, 'error');
-                }
-            } catch (error) {
-                showStatus(`❌ Error: ${error.message}`, 'error');
+            // Enforce minimum 1-year range
+            const diffMs = new Date(dateTo) - new Date(dateFrom);
+            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+            if (diffDays < 365) {
+                showStatus('❌ Date range must span at least 1 year for meaningful analysis', 'error');
+                return;
             }
-        });
+            if (new Date(dateTo) <= new Date(dateFrom)) {
+                showStatus('❌ Date To must be after Date From', 'error');
+                return;
+            }
 
-        removeFileBtn.addEventListener('click', () => {
-            fileInput.value = '';
-            uploadedFile = null;
-            preparedData = null;
-            fileInfo.classList.remove('show');
-            fileUploadArea.style.display = 'block';
-            downloadCountsTop.style.display = 'none';
-            controlsSection.classList.remove('show');
-            topCodesSection.style.display = 'none';
+            // Reset UI
+            fetchDataBtn.disabled = true;
+            fetchDataBtn.innerHTML = '<span class="spinner"></span> Fetching…';
+            fetchProgress.style.display = 'block';
+            postFetchSection.style.display = 'none';
+            resetFetchSteps();
+            resultsSection.classList.remove('show');
             manufacturerSelectGroup.style.display = 'none';
             analyzeBtn.classList.remove('show');
-            resultsSection.classList.remove('show');
-            levelInfo.textContent = '';
-            hideStatus();
+            prefixSelect.innerHTML = '<option value="">Select a code...</option>';
+            if (_fetchPollTimer) clearInterval(_fetchPollTimer);
+
+            setFetchStep(1, 'active');
+            showStatus('Fetching data from FDA MAUDE…', 'info');
+
+            try {
+                // Start clean pipeline (same as home section)
+                const startResp = await fetch('/api/pipeline/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_code: productCode, date_from: dateFrom, date_to: dateTo, pipeline_type: 'clean' })
+                });
+                const startData = await parseJsonResponse(startResp);
+                if (!startResp.ok) { throw new Error(startData.error || 'Failed to start pipeline'); }
+
+                _fetchJobId = startData.job_id;
+
+                // Poll status
+                _fetchPollTimer = setInterval(async () => {
+                    try {
+                        const pollResp = await fetch(`/api/pipeline/status/${_fetchJobId}`);
+                        const poll = await parseJsonResponse(pollResp);
+
+                        const step = poll.step || 1;
+                        if (step >= 1) setFetchStep(1, step > 1 ? 'done' : 'active');
+                        if (step >= 2) setFetchStep(2, step > 2 ? 'done' : 'active');
+
+                        if (poll.status === 'failed') {
+                            clearInterval(_fetchPollTimer);
+                            showStatus(`❌ ${poll.error || 'Pipeline failed'}`, 'error');
+                            fetchDataBtn.disabled = false;
+                            fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
+                        } else if (poll.status === 'done') {
+                            clearInterval(_fetchPollTimer);
+                            setFetchStep(2, 'done');
+                            setFetchStep(3, 'active');
+                            showStatus('Extracting IMDRF codes…', 'info');
+
+                            // Prepare insights from the pipeline result
+                            const prepResp = await fetch('/api/imdrf-insights/prepare-from-pipeline', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ job_id: _fetchJobId, level: currentLevel })
+                            });
+                            const prepData = await parseJsonResponse(prepResp);
+                            if (!prepResp.ok) { throw new Error(prepData.error || 'Code extraction failed'); }
+
+                            postFetchSection.style.display = 'block';
+                            applyPreparedData(prepData);
+                            fetchDataBtn.disabled = false;
+                            fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
+                        }
+                    } catch (err) {
+                        clearInterval(_fetchPollTimer);
+                        showStatus(`❌ ${err.message}`, 'error');
+                        fetchDataBtn.disabled = false;
+                        fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
+                    }
+                }, 2000);
+
+            } catch (err) {
+                showStatus(`❌ ${err.message}`, 'error');
+                fetchDataBtn.disabled = false;
+                fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
+            }
         });
 
         downloadCountsAllBtn.addEventListener('click', () => {
             if (!preparedData || !preparedData.file_id) {
-                showStatus('❌ Please upload a file first', 'error');
+                showStatus('❌ Please fetch data first', 'error');
                 return;
             }
             const url = `/api/imdrf-insights/download-code-counts-xlsx?file_id=${preparedData.file_id}`;
@@ -929,7 +1331,7 @@
 
         topCodesBtn.addEventListener('click', () => {
             if (!preparedData) {
-                showStatus('❌ Please upload a file first', 'error');
+                showStatus('❌ Please fetch data first', 'error');
                 return;
             }
 
@@ -985,35 +1387,27 @@
 
                     preparedData.all_manufacturers.forEach((mfr, index) => {
                         const isTop = data.top_manufacturers.includes(mfr);
-                        const div = document.createElement('div');
-                        div.style.marginBottom = '10px';
+                        if (isTop) selectedManufacturers.push(mfr);
+
+                        const div = document.createElement('label');
+                        div.className = 'mfr-item';
+                        div.htmlFor = `mfr_${index}`;
 
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.id = `mfr_${index}`;
                         checkbox.value = mfr;
                         checkbox.checked = isTop;
-                        checkbox.style.marginRight = '8px';
-
-                        if (isTop) {
-                            selectedManufacturers.push(mfr);
-                        }
-
                         checkbox.addEventListener('change', (e) => {
-                            if (e.target.checked) {
-                                selectedManufacturers.push(mfr);
-                            } else {
-                                selectedManufacturers = selectedManufacturers.filter(m => m !== mfr);
-                            }
+                            if (e.target.checked) selectedManufacturers.push(mfr);
+                            else selectedManufacturers = selectedManufacturers.filter(m => m !== mfr);
                         });
 
-                        const label = document.createElement('label');
-                        label.htmlFor = `mfr_${index}`;
-                        label.textContent = mfr;
-                        label.style.cursor = 'pointer';
+                        const span = document.createElement('span');
+                        span.textContent = mfr;
 
                         div.appendChild(checkbox);
-                        div.appendChild(label);
+                        div.appendChild(span);
                         manufacturerCheckboxes.appendChild(div);
                     });
 
@@ -1047,7 +1441,6 @@
                         prefix: prefixSelect.value,
                         manufacturers: selectedManufacturers,
                         grain: grainSelect.value,
-                        threshold_k: parseFloat(thresholdInput.value),
                         level: currentLevel
                     })
                 });
@@ -1069,11 +1462,29 @@
             }
         });
 
+        // Format a YYYY-MM-DD date string to a readable x-axis label based on grain
+        function formatPeriodLabel(dateStr, grain) {
+            const d = new Date(dateStr + 'T00:00:00');
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1; // 1-12
+            const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            if (grain === 'M') {
+                return `${monthNames[d.getMonth()]} ${year}`;
+            } else if (grain === 'Q') {
+                if (month <= 3)  return `Jan-Mar ${year}`;
+                if (month <= 6)  return `Apr-Jun ${year}`;
+                if (month <= 9)  return `Jul-Sep ${year}`;
+                return `Oct-Dec ${year}`;
+            }
+            return dateStr;
+        }
+
         function displayResults(data) {
-            // Display metrics
             const metricsGrid = document.getElementById('metricsGrid');
-            const grainLabel = {D: 'Daily', W: 'Weekly', M: 'Monthly'}[data.grain] || 'Period';
+            const grainLabel = {M: 'Monthly', Q: 'Quarterly'}[data.grain] || 'Period';
             const levelLabel = data.level_label || `Level-${data.level || currentLevel}`;
+            const thresholdPct = (data.threshold !== null && data.threshold !== undefined)
+                ? data.threshold.toFixed(2) : 'N/A';
 
             metricsGrid.innerHTML = `
                 <div class="metric-card">
@@ -1081,78 +1492,77 @@
                     <div class="metric-label">Selected Code (${levelLabel})</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">${data.universal_mean}</div>
-                    <div class="metric-label">Universal Mean (${grainLabel})</div>
+                    <div class="metric-value">${thresholdPct}%</div>
+                    <div class="metric-label">Code Share (% of all events)</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">${data.prefix_mean}</div>
-                    <div class="metric-label">Code Mean (${grainLabel})</div>
+                    <div class="metric-value">${data.total_selected_code ?? '—'}</div>
+                    <div class="metric-label">Total Events for Code</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-value">${selectedManufacturers.length}</div>
-                    <div class="metric-label">Manufacturers</div>
+                    <div class="metric-label">Manufacturers Selected</div>
                 </div>
             `;
 
-            // Create Plotly chart
+            // Build x-axis labels from dates
             const traces = [];
+            let allLabels = [];
 
-            // Add manufacturer lines
             Object.keys(data.manufacturer_series).forEach((mfr, index) => {
                 const series = data.manufacturer_series[mfr];
+                const labels = series.dates.map(d => formatPeriodLabel(d, data.grain));
+                if (index === 0) allLabels = labels;
                 traces.push({
-                    x: series.dates,
+                    x: labels,
                     y: series.values,
                     mode: 'lines+markers',
                     name: mfr,
-                    type: 'scatter'
+                    type: 'scatter',
+                    yaxis: 'y'
                 });
             });
 
-            // Add universal mean line
-            if (data.date_range && data.date_range.length > 0) {
+            // Add threshold as a horizontal line on secondary Y-axis
+            if (allLabels.length > 0 && data.threshold !== null && data.threshold !== undefined) {
                 traces.push({
-                    x: [data.date_range[0], data.date_range[data.date_range.length - 1]],
-                    y: [data.universal_mean, data.universal_mean],
+                    x: [allLabels[0], allLabels[allLabels.length - 1]],
+                    y: [data.threshold, data.threshold],
                     mode: 'lines',
-                    name: 'Universal Mean',
-                    line: {dash: 'dash', color: 'rgba(128, 128, 128, 0.6)', width: 2}
-                });
-
-                // Add prefix mean line
-                traces.push({
-                    x: [data.date_range[0], data.date_range[data.date_range.length - 1]],
-                    y: [data.prefix_mean, data.prefix_mean],
-                    mode: 'lines',
-                    name: `${data.selected_prefix} Mean`,
-                    line: {dash: 'dot', color: 'rgba(255, 0, 0, 0.6)', width: 2}
-                });
-
-                // Add threshold lines
-                traces.push({
-                    x: [data.date_range[0], data.date_range[data.date_range.length - 1]],
-                    y: [data.upper_threshold, data.upper_threshold],
-                    mode: 'lines',
-                    name: `Upper Threshold`,
-                    line: {dash: 'dashdot', color: 'rgba(255, 100, 100, 0.4)', width: 1}
-                });
-
-                traces.push({
-                    x: [data.date_range[0], data.date_range[data.date_range.length - 1]],
-                    y: [data.lower_threshold, data.lower_threshold],
-                    mode: 'lines',
-                    name: `Lower Threshold`,
-                    line: {dash: 'dashdot', color: 'rgba(100, 100, 255, 0.4)', width: 1}
+                    name: `Threshold (${thresholdPct}%)`,
+                    yaxis: 'y2',
+                    line: {dash: 'dash', color: '#ef4444', width: 2},
+                    hovertemplate: `Threshold: ${thresholdPct}%<extra></extra>`
                 });
             }
 
             const layout = {
-                title: `IMDRF ${levelLabel} Code ${data.selected_prefix} - Manufacturer Comparison`,
-                xaxis: {title: 'Date'},
-                yaxis: {title: `Count (${grainLabel})`},
+                title: {
+                    text: `IMDRF ${levelLabel} — Code ${data.selected_prefix} — ${grainLabel} Trend`,
+                    font: {size: 15}
+                },
+                xaxis: {
+                    title: grainLabel === 'Monthly' ? 'Month' : 'Quarter',
+                    tickangle: -35,
+                    automargin: true
+                },
+                yaxis: {
+                    title: 'Count (Events)',
+                    rangemode: 'tozero'
+                },
+                yaxis2: {
+                    title: 'Code Share (%)',
+                    overlaying: 'y',
+                    side: 'right',
+                    showgrid: false,
+                    rangemode: 'tozero',
+                    ticksuffix: '%'
+                },
                 hovermode: 'x unified',
                 showlegend: true,
-                height: 500
+                legend: {orientation: 'h', y: -0.25},
+                height: 520,
+                margin: {b: 90}
             };
 
             Plotly.newPlot('chartDiv', traces, layout, {responsive: true});
@@ -1166,7 +1576,6 @@
                 row.innerHTML = `
                     <td style="font-weight: 600;">${stat.manufacturer}</td>
                     <td>${stat.total_events}</td>
-                    <td>${stat.mean_per_period}</td>
                     <td>${stat.max_per_period}</td>
                     <td>${stat.periods_with_events}</td>
                 `;

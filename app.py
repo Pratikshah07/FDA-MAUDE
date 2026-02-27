@@ -564,6 +564,54 @@ def api_prepare_insights():
         return jsonify({'error': str(e)}), 400
 
 
+@app.route('/api/imdrf-insights/prepare-from-pipeline', methods=['POST'])
+@login_required
+def api_prepare_insights_from_pipeline():
+    """Prepare IMDRF insights using a cleaned file produced by the pipeline."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id')
+    level = int(data.get('level', 1))
+
+    if not job_id:
+        return jsonify({'error': 'Missing job_id'}), 400
+    if level not in [1, 2, 3]:
+        return jsonify({'error': 'Invalid level. Must be 1, 2, or 3.'}), 400
+
+    job = _get_pipeline_job(job_id)
+    if not job or job.get('user_id') != current_user.id:
+        return jsonify({'error': 'Job not found'}), 404
+    if job.get('status') != 'done':
+        return jsonify({'error': 'Pipeline job is not complete yet'}), 409
+
+    cleaned_path = job.get('output_path')
+    if not cleaned_path or not os.path.exists(cleaned_path):
+        return jsonify({'error': 'Cleaned file not found for this job'}), 404
+
+    try:
+        from backend.imdrf_insights import prepare_data_for_insights  # lazy import
+        result = prepare_data_for_insights(cleaned_path, level=level)
+
+        # Reuse the cleaned file path as the file_id key for refresh calls
+        file_id = f"{current_user.id}_{job_id}"
+        session[f'insights_file_{file_id}'] = {'path': cleaned_path}
+
+        return jsonify({
+            'success': True,
+            'file_id': file_id,
+            'all_prefixes': result['all_prefixes'],
+            'all_manufacturers': result['all_manufacturers'],
+            'prefix_counts': result.get('prefix_counts', {}),
+            'total_rows': result['total_rows'],
+            'rows_with_imdrf': result['rows_with_imdrf'],
+            'rows_with_dates': result['rows_with_dates'],
+            'level': level,
+            'level_label': result.get('level_label', f'Level-{level}')
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 @app.route('/api/imdrf-insights/refresh', methods=['POST'])
 @login_required
 def api_refresh_insights():
@@ -668,8 +716,7 @@ def api_analyze_insights():
     file_id = data.get('file_id')
     prefix = data.get('prefix')
     manufacturers = data.get('manufacturers', [])
-    grain = data.get('grain', 'W')
-    threshold_k = data.get('threshold_k', 2.0)
+    grain = data.get('grain', 'M')
 
     if not file_id or not prefix or not manufacturers:
         return jsonify({'error': 'Missing required parameters'}), 400
@@ -698,13 +745,12 @@ def api_analyze_insights():
         result = prepare_data_for_insights(file_path, level=level)
         df_exploded = result['df_exploded']
 
-        # Perform analysis with level for universal mean calculation
+        # Perform analysis
         analysis_result = analyze_imdrf_insights(
             df_exploded,
             prefix,
             manufacturers,
             grain,
-            threshold_k,
             level=level
         )
 
@@ -718,11 +764,9 @@ def api_analyze_insights():
 
         response_data = {
             'success': True,
-            'universal_mean': analysis_result['universal_mean'],
-            'prefix_mean': analysis_result['prefix_mean'],
-            'prefix_std': analysis_result['prefix_std'],
-            'upper_threshold': analysis_result['upper_threshold'],
-            'lower_threshold': analysis_result['lower_threshold'],
+            'threshold': analysis_result['threshold'],
+            'total_selected_code': analysis_result['total_selected_code'],
+            'total_all_codes': analysis_result['total_all_codes'],
             'manufacturer_series': manufacturer_series,
             'date_range': analysis_result['date_range'].strftime('%Y-%m-%d').tolist() if len(analysis_result['date_range']) > 0 else [],
             'statistics': analysis_result['statistics'],
@@ -732,7 +776,7 @@ def api_analyze_insights():
             'level_label': analysis_result.get('level_label', f'Level-{level}')
         }
 
-        return jsonify(response_data), 200
+        return jsonify(_sanitize_json(response_data)), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -1517,6 +1561,18 @@ def api_maude_export():
     response = Response(stream_with_context(_maude_generate_csv(probe)), mimetype='text/csv')
     response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+
+def _sanitize_json(obj):
+    """Recursively replace NaN/Inf float values with None so jsonify produces valid JSON."""
+    import math
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json(v) for v in obj]
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    return obj
 
 
 def _fmt_num(n):
