@@ -639,19 +639,14 @@
         fetchBtn.disabled = true;
         fetchBtn.innerHTML = '<span class="spinner"></span> Fetching…';
 
-        firebase.auth().currentUser.getIdToken().then(function(token) {
-            return fetch('/api/device-recall/search', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + token
-                },
-                body: JSON.stringify({
-                    product_code: productCode,
-                    date_from: dateFrom,
-                    date_to: dateTo
-                })
-            });
+        fetch('/api/device-recall/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                product_code: productCode,
+                date_from: dateFrom,
+                date_to: dateTo
+            })
         }).then(function(resp) {
             return resp.json().then(function(data) {
                 return {ok: resp.ok, data: data};

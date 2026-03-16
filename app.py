@@ -2730,8 +2730,8 @@ def api_device_recall_search():
 
     # Try product_code field first, then openfda.product_code
     search_candidates = [
-        f'product_code:{_format_openfda_search_value(product_code)}+AND+recall_initiation_date:[{start_openfda}+TO+{end_openfda}]',
-        f'openfda.product_code:{_format_openfda_search_value(product_code)}+AND+recall_initiation_date:[{start_openfda}+TO+{end_openfda}]',
+        f'product_code:{_format_openfda_search_value(product_code)} AND recall_initiation_date:[{start_openfda} TO {end_openfda}]',
+        f'openfda.product_code:{_format_openfda_search_value(product_code)} AND recall_initiation_date:[{start_openfda} TO {end_openfda}]',
     ]
 
     records = []
