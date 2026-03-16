@@ -216,15 +216,18 @@ def find_date_column(df):
     Searches for common date column names in priority order.
     """
     # Priority list of date column patterns (exact matches first, then contains)
+    # "date received" is preferred over "event date" because it reflects the
+    # actual intake date range selected by the user, whereas event date can
+    # span arbitrary historical years outside the requested range.
     date_patterns_exact = [
-        "event date", "event_date", "eventdate",
-        "date received", "date_received", "datereceived",
+        "date received", "date_received", "datereceived", "received_date",
         "report date", "report_date", "reportdate",
-        "date", "mdr_date", "received_date"
+        "event date", "event_date", "eventdate",
+        "date", "mdr_date"
     ]
 
     date_patterns_contains = [
-        "date", "received", "event"
+        "received", "date", "event"
     ]
 
     # First pass: exact match (case-insensitive)
@@ -334,7 +337,7 @@ def find_column(df, target):
     return None
 
 
-def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M', level=1):
+def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M', level=1, date_from=None, date_to=None):
     """
     Perform IMDRF prefix insights analysis.
 
@@ -344,6 +347,8 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M
         selected_manufacturers: List of manufacturer names to compare
         grain: Date aggregation grain ('M' monthly, 'Q' quarterly)
         level: 1, 2, or 3 - IMDRF analysis level
+        date_from: Optional ISO date string (YYYY-MM-DD) — used as the range start for the chart
+        date_to: Optional ISO date string (YYYY-MM-DD) — used as the range end for the chart
 
     Returns:
         dict with analysis results including:
@@ -389,28 +394,40 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M
 
     # Create time-series for each manufacturer
     manufacturer_series = {}
-    all_dates = set()
 
     for mfr in selected_manufacturers:
         df_mfr = df_selected[df_selected[mfr_col] == mfr]
         mfr_counts = aggregate_by_grain(df_mfr, 'parsed_date', pandas_grain)
         manufacturer_series[mfr] = mfr_counts
-        if len(mfr_counts) > 0:
-            all_dates.update(mfr_counts.index)
 
-    # Create a complete date range
-    if all_dates:
-        date_range = pd.date_range(
-            start=min(all_dates),
-            end=max(all_dates),
-            freq=pandas_grain
-        )
+    # Build the full date range for the chart axes.
+    # Priority: use the explicitly requested date_from / date_to (full year coverage),
+    # then fall back to the span of all data for the selected code across ALL manufacturers.
+    if date_from and date_to:
+        try:
+            date_range = pd.date_range(
+                start=pd.to_datetime(date_from),
+                end=pd.to_datetime(date_to),
+                freq=pandas_grain
+            )
+        except Exception:
+            date_range = pd.DatetimeIndex([])
+    else:
+        # Use all data for this code (not just selected mfrs) to determine the span
+        all_code_counts = aggregate_by_grain(df_prefix, 'parsed_date', pandas_grain)
+        if len(all_code_counts) > 0:
+            date_range = pd.date_range(
+                start=all_code_counts.index.min(),
+                end=all_code_counts.index.max(),
+                freq=pandas_grain
+            )
+        else:
+            date_range = pd.DatetimeIndex([])
 
-        # Reindex each manufacturer series to fill gaps with 0
+    # Reindex each manufacturer series to fill gaps with 0
+    if len(date_range) > 0:
         for mfr in manufacturer_series:
             manufacturer_series[mfr] = manufacturer_series[mfr].reindex(date_range, fill_value=0)
-    else:
-        date_range = pd.DatetimeIndex([])
 
     # Calculate summary statistics per manufacturer
     statistics = []
@@ -445,7 +462,7 @@ def analyze_imdrf_insights(df, selected_prefix, selected_manufacturers, grain='M
     }
 
 
-def prepare_data_for_insights(file_path, level=1):
+def prepare_data_for_insights(file_path, level=1, annex_file_path=None):
     """
     Read and prepare data for IMDRF insights analysis.
 
@@ -538,7 +555,40 @@ def prepare_data_for_insights(file_path, level=1):
     # Convert to plain str keys to avoid float/str comparison errors in sorted()
     prefix_counts = {str(k): int(v) for k, v in prefix_counts_series.to_dict().items()
                      if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', 'nat')}
-    all_prefixes = sorted(prefix_counts.keys())
+    all_prefixes_set = set(prefix_counts.keys())
+
+    # Also include patient problem E codes (from Annex E mapping) in the prefix list
+    if annex_file_path:
+        patient_col = None
+        for col in df.columns:
+            col_norm = str(col).strip().lower().replace('_', ' ')
+            if col_norm in {"patient problem", "patient problems", "patient problem text"}:
+                patient_col = col
+                break
+        if patient_col is None:
+            for col in df.columns:
+                col_norm = str(col).strip().lower().replace('_', ' ')
+                if "patient" in col_norm and "problem" in col_norm:
+                    patient_col = col
+                    break
+        if patient_col is not None:
+            desc_to_code, _ = _build_e_desc_to_code_map(annex_file_path)
+            prefix_len = LEVEL_CONFIG[level]['length']
+            e_code_counts: Dict[str, int] = {}
+            for raw in df[patient_col].dropna():
+                raw = str(raw).strip()
+                if not raw or raw.lower() in ('nan', 'none', 'nat'):
+                    continue
+                for part in [p.strip() for p in raw.split(';') if p.strip()]:
+                    code = desc_to_code.get(part.lower())
+                    if code and len(code) >= prefix_len:
+                        prefix = code[:prefix_len]
+                        all_prefixes_set.add(prefix)
+                        e_code_counts[prefix] = e_code_counts.get(prefix, 0) + 1
+            # Merge E-code counts into prefix_counts so the UI shows real values
+            prefix_counts.update(e_code_counts)
+
+    all_prefixes = sorted(all_prefixes_set)
     all_manufacturers = sorted(
         str(m) for m in df_with_dates[mfr_col].unique()
         if m is not None and str(m).strip() and str(m).strip().lower() not in ('nan', 'none', 'nat')
@@ -765,6 +815,166 @@ def get_patient_problem_counts(file_path: str, df: pd.DataFrame = None) -> Dict[
     return counts
 
 
+def get_imdrf_code_monthly_counts(file_path: str, df: pd.DataFrame = None):
+    """
+    Get month-wise event counts for each IMDRF code at all levels.
+
+    Months span the full date range of the data (including months with zero events).
+    Counts are combined across all manufacturers.
+
+    Returns:
+        dict with:
+        - 'months': sorted list of 'YYYY-MM' strings covering full date range
+        - 'counts': {level: {code: {month_str: count}}}
+          e.g. {1: {'A05': {'2023-01': 3, '2023-02': 0, ...}}, ...}
+        Returns empty structure if date column not found.
+    """
+    if df is None:
+        df = _load_cleaned_dataframe(file_path)
+
+    imdrf_col = find_imdrf_column(df)
+    if imdrf_col is None:
+        return {'months': [], 'counts': {1: {}, 2: {}, 3: {}}}
+
+    date_col = find_date_column(df)
+    if date_col is None:
+        return {'months': [], 'counts': {1: {}, 2: {}, 3: {}}}
+
+    df = df.copy()
+    df['_parsed_date'] = df[date_col].apply(parse_flexible_date)
+    df_dated = df[df['_parsed_date'].notna()].copy()
+
+    if df_dated.empty:
+        return {'months': [], 'counts': {1: {}, 2: {}, 3: {}}}
+
+    # 'YYYY-MM' string for each row
+    df_dated['_month'] = df_dated['_parsed_date'].dt.to_period('M').astype(str)
+
+    # Full month range including gaps
+    all_periods = pd.period_range(
+        start=df_dated['_parsed_date'].min(),
+        end=df_dated['_parsed_date'].max(),
+        freq='M'
+    )
+    all_months_str = [str(p) for p in all_periods]
+
+    counts_by_level = {}
+    for level in [1, 2, 3]:
+        df_dated['_prefixes'] = df_dated[imdrf_col].apply(
+            lambda x: extract_imdrf_prefixes(x, level=level)
+        )
+        df_exp = df_dated[df_dated['_prefixes'].apply(len) > 0].copy()
+        df_exp = df_exp.explode('_prefixes').rename(columns={'_prefixes': '_code'})
+
+        # Exclude A24/A25
+        df_exp = df_exp[
+            ~df_exp['_code'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
+        ]
+
+        if df_exp.empty:
+            counts_by_level[level] = {}
+            continue
+
+        # Count per code per month
+        grouped = df_exp.groupby(['_code', '_month']).size()
+        level_counts = {}
+        for (code, month), cnt in grouped.items():
+            code = str(code).strip()
+            if not code or code.lower() in ('nan', 'none', 'nat'):
+                continue
+            if code not in level_counts:
+                level_counts[code] = {m: 0 for m in all_months_str}
+            if month in level_counts[code]:
+                level_counts[code][month] = int(cnt)
+
+        counts_by_level[level] = level_counts
+
+    return {'months': all_months_str, 'counts': counts_by_level}
+
+
+def get_imdrf_code_manufacturer_monthly_counts(file_path: str, df: pd.DataFrame = None):
+    """
+    Get per-manufacturer, per-month event counts for every IMDRF code at all levels.
+
+    Months span the full date range (including gaps filled with 0).
+    Manufacturers with zero contribution to a code are excluded from that code's data.
+
+    Returns:
+        dict with:
+        - 'months': sorted list of 'YYYY-MM' strings covering the full date range
+        - 'data': {level: {code: {mfr: {month_str: count}}}}
+    """
+    if df is None:
+        df = _load_cleaned_dataframe(file_path)
+
+    imdrf_col = find_imdrf_column(df)
+    if imdrf_col is None:
+        return {'months': [], 'data': {1: {}, 2: {}, 3: {}}}
+
+    date_col = find_date_column(df)
+    if date_col is None:
+        return {'months': [], 'data': {1: {}, 2: {}, 3: {}}}
+
+    mfr_col = find_manufacturer_column(df)
+    df = df.copy()
+    if mfr_col is None:
+        df['_manufacturer'] = 'All Data'
+        mfr_col = '_manufacturer'
+
+    df['_parsed_date'] = df[date_col].apply(parse_flexible_date)
+    df_dated = df[df['_parsed_date'].notna()].copy()
+
+    if df_dated.empty:
+        return {'months': [], 'data': {1: {}, 2: {}, 3: {}}}
+
+    df_dated['_month'] = df_dated['_parsed_date'].dt.to_period('M').astype(str)
+
+    all_periods = pd.period_range(
+        start=df_dated['_parsed_date'].min(),
+        end=df_dated['_parsed_date'].max(),
+        freq='M'
+    )
+    all_months_str = [str(p) for p in all_periods]
+
+    data_by_level = {}
+    for level in [1, 2, 3]:
+        df_dated['_prefixes'] = df_dated[imdrf_col].apply(
+            lambda x: extract_imdrf_prefixes(x, level=level)
+        )
+        df_exp = df_dated[df_dated['_prefixes'].apply(len) > 0].copy()
+        df_exp = df_exp.explode('_prefixes').rename(columns={'_prefixes': '_code'})
+
+        # Exclude A24/A25
+        df_exp = df_exp[
+            ~df_exp['_code'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
+        ]
+
+        if df_exp.empty:
+            data_by_level[level] = {}
+            continue
+
+        grouped = df_exp.groupby(['_code', mfr_col, '_month']).size()
+
+        level_data: dict = {}
+        for (code, mfr, month), cnt in grouped.items():
+            code = str(code).strip()
+            mfr = str(mfr).strip()
+            if not code or code.lower() in ('nan', 'none', 'nat'):
+                continue
+            if not mfr or mfr.lower() in ('nan', 'none', 'nat'):
+                continue
+            if code not in level_data:
+                level_data[code] = {}
+            if mfr not in level_data[code]:
+                level_data[code][mfr] = {m: 0 for m in all_months_str}
+            if month in level_data[code][mfr]:
+                level_data[code][mfr][month] = int(cnt)
+
+        data_by_level[level] = level_data
+
+    return {'months': all_months_str, 'data': data_by_level}
+
+
 def get_top_manufacturers_for_prefix(df_exploded, prefix, mfr_col, top_n=5):
     """
     Get top N manufacturers by volume for a specific IMDRF prefix.
@@ -781,3 +991,745 @@ def get_top_manufacturers_for_prefix(df_exploded, prefix, mfr_col, top_n=5):
     df_prefix = df_exploded[df_exploded['imdrf_prefix'] == prefix]
     mfr_counts = df_prefix[mfr_col].value_counts()
     return mfr_counts.head(top_n).index.tolist()
+
+
+# ---------------------------------------------------------------------------
+# Patient Problem → IMDRF E-code mapping helpers
+# ---------------------------------------------------------------------------
+
+def _build_e_desc_to_code_map(annex_file_path: str):
+    """
+    Parse Annex E sheet and return two mappings:
+      - desc_to_code: {normalized_description_lower: code}  (L1/L2/L3 terms → E code)
+      - code_to_desc: {code: description}
+
+    Only codes whose first char is 'E' are included.
+    For duplicate descriptions, the first occurrence wins (setdefault).
+    """
+    desc_to_code: Dict[str, str] = {}
+    code_to_desc: Dict[str, str] = {}
+
+    if not annex_file_path or not os.path.exists(annex_file_path):
+        return desc_to_code, code_to_desc
+
+    xl = pd.ExcelFile(annex_file_path)
+
+    for sheet in xl.sheet_names:
+        if sheet.strip().upper() != 'E':
+            continue
+
+        df_raw = xl.parse(sheet_name=sheet, header=None, dtype=str)
+        header_row_idx = None
+        for i in range(min(50, len(df_raw))):
+            row_vals = [str(v).strip() for v in df_raw.iloc[i].tolist()]
+            if "Level 1 Term" in row_vals:
+                header_row_idx = i
+                break
+        if header_row_idx is None:
+            continue
+
+        df_e = xl.parse(sheet_name=sheet, header=header_row_idx, dtype=str)
+        df_e.columns = [str(c).strip() for c in df_e.columns]
+
+        required = {"Level 1 Term", "Level 2 Term", "Level 3 Term", "Code"}
+        if not required.issubset(set(df_e.columns)):
+            continue
+
+        df_e["Level 1 Term"] = df_e["Level 1 Term"].ffill()
+        df_e["Level 2 Term"] = df_e["Level 2 Term"].ffill()
+
+        for _, row in df_e.iterrows():
+            raw_code = str(row.get("Code", "")).strip()
+            if not raw_code or raw_code.lower() in ("nan", "none", ""):
+                continue
+            code = re.sub(r'[^A-Za-z0-9]', '', raw_code).upper()
+            if not code.startswith('E'):
+                continue
+
+            if len(code) == 3:
+                desc = str(row.get("Level 1 Term", "")).strip()
+            elif len(code) == 5:
+                desc = str(row.get("Level 2 Term", "")).strip()
+            elif len(code) == 7:
+                desc = str(row.get("Level 3 Term", "")).strip()
+            else:
+                continue
+
+            if desc and desc.lower() not in ("nan", "none", ""):
+                desc_to_code.setdefault(desc.lower(), code)
+                code_to_desc.setdefault(code, desc)
+
+    return desc_to_code, code_to_desc
+
+
+def get_patient_problem_e_code_monthly_counts(file_path: str, annex_file_path: str,
+                                               df: pd.DataFrame = None) -> Dict:
+    """
+    Map patient problem text descriptions to IMDRF E codes (Annex E) and return
+    month-wise counts at Level-1, Level-2, and Level-3.
+
+    Patient Problem column values are split on ';' and matched case-insensitively
+    against term descriptions from Annex E. Unmatched values are skipped.
+
+    Returns:
+        dict with:
+        - 'months': sorted list of 'YYYY-MM' strings covering full date range
+        - 'counts': {level: {code: {month_str: count}}}
+        - 'totals': {level: {code: {"count": int, "description": str}}}
+    """
+    if df is None:
+        df = _load_cleaned_dataframe(file_path)
+
+    desc_to_code, code_to_desc = _build_e_desc_to_code_map(annex_file_path)
+
+    # Find patient problem column
+    patient_col = None
+    for col in df.columns:
+        col_norm = str(col).strip().lower().replace('_', ' ')
+        if col_norm in {"patient problem", "patient problems", "patient problem text"}:
+            patient_col = col
+            break
+    if patient_col is None:
+        for col in df.columns:
+            col_norm = str(col).strip().lower().replace('_', ' ')
+            if "patient" in col_norm and "problem" in col_norm:
+                patient_col = col
+                break
+
+    if patient_col is None or not desc_to_code:
+        return {'months': [], 'counts': {1: {}, 2: {}, 3: {}}, 'totals': {1: {}, 2: {}, 3: {}}}
+
+    # Find date column
+    date_col = find_date_column(df)
+
+    df = df.copy()
+    df['_parsed_date'] = df[date_col].apply(parse_flexible_date) if date_col else pd.NaT
+    df_dated = df[df['_parsed_date'].notna()].copy() if date_col else df.copy()
+
+    has_dates = date_col is not None and not df_dated.empty
+    if has_dates:
+        df_dated['_month'] = df_dated['_parsed_date'].dt.to_period('M').astype(str)
+        all_periods = pd.period_range(
+            start=df_dated['_parsed_date'].min(),
+            end=df_dated['_parsed_date'].max(),
+            freq='M'
+        )
+        all_months_str = [str(p) for p in all_periods]
+    else:
+        df_dated = df.copy()
+        all_months_str = []
+
+    # Explode patient problem column into rows: each part mapped to an E code
+    rows = []
+    for _, row in df_dated.iterrows():
+        raw = str(row.get(patient_col, "")).strip()
+        if not raw or raw.lower() in ('nan', 'none', 'nat', ''):
+            continue
+        month = row.get('_month', '') if has_dates else ''
+        for part in [p.strip() for p in raw.split(';') if p.strip()]:
+            code = desc_to_code.get(part.lower())
+            if code:
+                rows.append({'_code': code, '_month': month})
+
+    if not rows:
+        return {'months': all_months_str, 'counts': {1: {}, 2: {}, 3: {}}, 'totals': {1: {}, 2: {}, 3: {}}}
+
+    df_exp = pd.DataFrame(rows)
+
+    # Build counts and totals by level
+    counts_by_level: Dict[int, Dict[str, Dict[str, int]]] = {}
+    totals_by_level: Dict[int, Dict[str, Dict]] = {}
+
+    for level in [1, 2, 3]:
+        length = LEVEL_CONFIG[level]['length']
+        df_exp['_prefix'] = df_exp['_code'].apply(
+            lambda c: c[:length] if len(c) >= length else None
+        )
+        df_lv = df_exp[df_exp['_prefix'].notna()].copy()
+
+        if df_lv.empty:
+            counts_by_level[level] = {}
+            totals_by_level[level] = {}
+            continue
+
+        # Totals
+        total_counts = df_lv['_prefix'].value_counts().to_dict()
+        totals_by_level[level] = {
+            str(code): {
+                "count": int(cnt),
+                "description": code_to_desc.get(str(code), "")
+            }
+            for code, cnt in total_counts.items()
+        }
+
+        # Monthly breakdown
+        if has_dates and '_month' in df_lv.columns:
+            grouped = df_lv.groupby(['_prefix', '_month']).size()
+            level_counts: Dict[str, Dict[str, int]] = {}
+            for (code, month), cnt in grouped.items():
+                code = str(code)
+                if code not in level_counts:
+                    level_counts[code] = {m: 0 for m in all_months_str}
+                if month in level_counts[code]:
+                    level_counts[code][month] = int(cnt)
+            counts_by_level[level] = level_counts
+        else:
+            counts_by_level[level] = {}
+
+    return {
+        'months': all_months_str,
+        'counts': counts_by_level,
+        'totals': totals_by_level,
+    }
+
+
+def get_patient_problem_e_code_mfr_monthly_counts(file_path: str, annex_file_path: str,
+                                                    df: pd.DataFrame = None) -> Dict:
+    """
+    Map patient problem text descriptions to IMDRF E codes and return per-manufacturer,
+    per-month counts at Level-1, Level-2, and Level-3.
+
+    Returns:
+        dict with:
+        - 'months': sorted list of 'YYYY-MM' strings covering the full date range
+        - 'data': {level: {code: {mfr: {month_str: count}}}}
+    """
+    if df is None:
+        df = _load_cleaned_dataframe(file_path)
+
+    desc_to_code, code_to_desc = _build_e_desc_to_code_map(annex_file_path)
+
+    # Find patient problem column
+    patient_col = None
+    for col in df.columns:
+        col_norm = str(col).strip().lower().replace('_', ' ')
+        if col_norm in {"patient problem", "patient problems", "patient problem text"}:
+            patient_col = col
+            break
+    if patient_col is None:
+        for col in df.columns:
+            col_norm = str(col).strip().lower().replace('_', ' ')
+            if "patient" in col_norm and "problem" in col_norm:
+                patient_col = col
+                break
+
+    if patient_col is None or not desc_to_code:
+        return {'months': [], 'data': {1: {}, 2: {}, 3: {}}}
+
+    date_col = find_date_column(df)
+    mfr_col = find_manufacturer_column(df)
+    df = df.copy()
+    if mfr_col is None:
+        df['_manufacturer'] = 'All Data'
+        mfr_col = '_manufacturer'
+
+    if date_col is None:
+        return {'months': [], 'data': {1: {}, 2: {}, 3: {}}}
+
+    df['_parsed_date'] = df[date_col].apply(parse_flexible_date)
+    df_dated = df[df['_parsed_date'].notna()].copy()
+
+    if df_dated.empty:
+        return {'months': [], 'data': {1: {}, 2: {}, 3: {}}}
+
+    df_dated['_month'] = df_dated['_parsed_date'].dt.to_period('M').astype(str)
+
+    all_periods = pd.period_range(
+        start=df_dated['_parsed_date'].min(),
+        end=df_dated['_parsed_date'].max(),
+        freq='M'
+    )
+    all_months_str = [str(p) for p in all_periods]
+
+    # Explode patient problems into rows with manufacturer + month
+    rows = []
+    for _, row in df_dated.iterrows():
+        raw = str(row.get(patient_col, "")).strip()
+        if not raw or raw.lower() in ('nan', 'none', 'nat', ''):
+            continue
+        mfr = str(row.get(mfr_col, "")).strip()
+        month = str(row.get('_month', ''))
+        for part in [p.strip() for p in raw.split(';') if p.strip()]:
+            code = desc_to_code.get(part.lower())
+            if code:
+                rows.append({'_code': code, '_mfr': mfr, '_month': month})
+
+    if not rows:
+        return {'months': all_months_str, 'data': {1: {}, 2: {}, 3: {}}}
+
+    df_exp = pd.DataFrame(rows)
+
+    data_by_level: Dict[int, Dict] = {}
+    for level in [1, 2, 3]:
+        length = LEVEL_CONFIG[level]['length']
+        df_exp['_prefix'] = df_exp['_code'].apply(
+            lambda c: c[:length] if len(c) >= length else None
+        )
+        df_lv = df_exp[df_exp['_prefix'].notna()].copy()
+
+        if df_lv.empty:
+            data_by_level[level] = {}
+            continue
+
+        grouped = df_lv.groupby(['_prefix', '_mfr', '_month']).size()
+        level_data: Dict = {}
+        for (code, mfr, month), cnt in grouped.items():
+            code = str(code)
+            mfr = str(mfr)
+            if not mfr or mfr.lower() in ('nan', 'none', 'nat'):
+                continue
+            if code not in level_data:
+                level_data[code] = {}
+            if mfr not in level_data[code]:
+                level_data[code][mfr] = {m: 0 for m in all_months_str}
+            if month in level_data[code][mfr]:
+                level_data[code][mfr][month] = int(cnt)
+
+        data_by_level[level] = level_data
+
+    return {'months': all_months_str, 'data': data_by_level}
+
+
+# ---------------------------------------------------------------------------
+# PDF Report generation helpers
+# ---------------------------------------------------------------------------
+
+def compute_report_data(df_current, df_hist, mfr_col, manufacturer,
+                        code_filter, period_from, period_to, grain, level):
+    """
+    Compute all data needed for the IMDRF Trend Analysis PDF report.
+
+    Args:
+        df_current: df_exploded for user's selected period (has imdrf_prefix, parsed_date)
+        df_hist:    df_exploded for preceding 2-year historical period
+        mfr_col:    manufacturer column name
+        manufacturer: selected manufacturer string
+        code_filter: IMDRF code string OR "ALL" (→ top 5)
+        period_from, period_to: "YYYY-MM-DD" strings
+        grain:  "M" (monthly) or "Q" (quarterly)
+        level:  1, 2, or 3 (for display label)
+
+    Returns:
+        dict with keys: manufacturer, period_from, period_to, hist_from, hist_to,
+        mfr_events, grand_total, level_label, grain_label,
+        top5 (list of dicts), historical (list of dicts),
+        trends (dict of code → {code, labels, mfr_values, peers_values})
+    """
+    period_from_ts = pd.Timestamp(period_from)
+    period_to_ts   = pd.Timestamp(period_to)
+    grain_label    = 'Monthly' if grain == 'M' else 'Quarterly'
+    level_label    = LEVEL_CONFIG.get(level, {}).get('label', f'Level-{level}')
+
+    # ── Filter current period ──────────────────────────────────────────────
+    df_period = df_current[
+        (df_current['parsed_date'] >= period_from_ts) &
+        (df_current['parsed_date'] <= period_to_ts)
+    ].copy()
+
+    # Exclude A24/A25
+    df_period = df_period[
+        ~df_period['imdrf_prefix'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
+    ]
+
+    grand_total = len(df_period)
+    df_mfr = df_period[df_period[mfr_col] == manufacturer]
+    mfr_total  = len(df_mfr)
+
+    # ── Top codes for selected manufacturer ───────────────────────────────
+    if mfr_total > 0:
+        mfr_code_counts = df_mfr['imdrf_prefix'].value_counts()
+    else:
+        mfr_code_counts = pd.Series(dtype=int)
+
+    if code_filter and code_filter.upper() != 'ALL':
+        codes_to_show = [code_filter]
+    else:
+        codes_to_show = mfr_code_counts.head(5).index.tolist()
+        if not codes_to_show:
+            # Fallback: top codes across all manufacturers
+            codes_to_show = df_period['imdrf_prefix'].value_counts().head(5).index.tolist()
+
+    top5 = []
+    for code in codes_to_show:
+        cnt = int(mfr_code_counts.get(code, 0))
+        prop = cnt / mfr_total if mfr_total > 0 else 0.0
+        top5.append({'code': code, 'mfr_count': cnt, 'proportion': prop})
+
+    # ── Historical proportions ─────────────────────────────────────────────
+    df_hist_clean = df_hist[
+        ~df_hist['imdrf_prefix'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
+    ]
+    hist_grand_total = len(df_hist_clean)
+
+    # Derive hist date range from actual data
+    if not df_hist_clean.empty and df_hist_clean['parsed_date'].notna().any():
+        hist_from = df_hist_clean['parsed_date'].min().strftime('%Y-%m-%d')
+        hist_to   = df_hist_clean['parsed_date'].max().strftime('%Y-%m-%d')
+    else:
+        hist_from = ''
+        hist_to   = ''
+
+    historical = []
+    for code in codes_to_show:
+        hist_cnt  = int((df_hist_clean['imdrf_prefix'] == code).sum())
+        hist_prop = hist_cnt / hist_grand_total if hist_grand_total > 0 else 0.0
+        historical.append({'code': code, 'hist_total': hist_cnt, 'hist_proportion': hist_prop})
+
+    # ── Current period proportions (all manufacturers) ────────────────────
+    current_period = []
+    for code in codes_to_show:
+        period_cnt  = int((df_period['imdrf_prefix'] == code).sum())
+        period_prop = period_cnt / grand_total if grand_total > 0 else 0.0
+        current_period.append({'code': code, 'period_total': period_cnt, 'period_proportion': period_prop})
+
+    # ── Trend series per code ─────────────────────────────────────────────
+    freq = 'M' if grain == 'M' else 'Q'
+    full_range = pd.period_range(start=period_from_ts, end=period_to_ts, freq=freq)
+    labels = [str(p) for p in full_range]
+
+    trends = {}
+    for code in codes_to_show:
+        df_code = df_period[df_period['imdrf_prefix'] == code].copy()
+        df_code['_period'] = df_code['parsed_date'].dt.to_period(freq)
+
+        mfr_df    = df_code[df_code[mfr_col] == manufacturer]
+        peers_df  = df_code[df_code[mfr_col] != manufacturer]
+
+        mfr_series   = mfr_df.groupby('_period').size().reindex(full_range, fill_value=0)
+        peers_series = peers_df.groupby('_period').size().reindex(full_range, fill_value=0)
+
+        trends[code] = {
+            'code':        code,
+            'labels':      labels,
+            'mfr_values':  mfr_series.tolist(),
+            'peers_values': peers_series.tolist(),
+        }
+
+    return {
+        'manufacturer': manufacturer,
+        'period_from':  period_from,
+        'period_to':    period_to,
+        'hist_from':    hist_from,
+        'hist_to':      hist_to,
+        'mfr_events':   mfr_total,
+        'grand_total':  grand_total,
+        'level_label':  level_label,
+        'grain_label':  grain_label,
+        'top5':            top5,
+        'historical':      historical,
+        'current_period':  current_period,
+        'trends':          trends,
+    }
+
+
+def render_trend_chart(code, labels, mfr_values, peers_values, manufacturer, grain_label):
+    """
+    Generate a matplotlib trend chart PNG and return as BytesIO.
+
+    Two lines: selected manufacturer (blue) and All Others/Peers (amber).
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from io import BytesIO
+
+    fig, ax = plt.subplots(figsize=(9, 3.5))
+    ax.plot(labels, mfr_values,   color='#2563eb', linewidth=2,
+            marker='o', markersize=4, label=manufacturer)
+    ax.plot(labels, peers_values, color='#f59e0b', linewidth=2,
+            marker='s', markersize=4, label='All Others (Peers)')
+    ax.set_title(f'IMDRF Code {code} — {grain_label} Trend', fontsize=11, fontweight='bold')
+    ax.set_xlabel('Period', fontsize=9)
+    ax.set_ylabel('Event Count', fontsize=9)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    # Show a subset of x-axis labels to avoid overlap
+    n = len(labels)
+    if n > 24:
+        step = max(1, n // 12)
+        ax.set_xticks(range(0, n, step))
+        ax.set_xticklabels([labels[i] for i in range(0, n, step)],
+                           rotation=45, ha='right', fontsize=8)
+    else:
+        plt.xticks(rotation=45, ha='right', fontsize=8)
+    plt.tight_layout()
+
+    buf = BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def compute_proportions(df_current, df_hist, code, period_from, period_to):
+    """
+    Compute proportion statistics for a specific IMDRF code across combined
+    historical + current period data (all manufacturers).
+
+    Args:
+        df_current: df_exploded for user's selected period
+        df_hist:    df_exploded for preceding 2-year historical period
+        code:       IMDRF code string (e.g., "A05")
+        period_from, period_to: "YYYY-MM-DD" strings (user's specified range)
+
+    Returns:
+        {
+            'total_proportion': float,
+            'total_code_count': int,
+            'total_all_count': int,
+            'period_months': ['YYYY-MM', ...],
+            'monthly': {'YYYY-MM': {'code_count': int, 'total_count': int, 'proportion': float}}
+        }
+    """
+    # Combine both datasets (hist + current)
+    df_combined = pd.concat([df_hist, df_current], ignore_index=True)
+
+    # Exclude A24/A25
+    df_combined = df_combined[
+        ~df_combined['imdrf_prefix'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
+    ]
+
+    total_all_count  = len(df_combined)
+    total_code_count = int((df_combined['imdrf_prefix'] == code).sum())
+    total_proportion = total_code_count / total_all_count if total_all_count > 0 else 0.0
+
+    # Monthly proportions for user's specified period only
+    period_from_ts = pd.Timestamp(period_from)
+    period_to_ts   = pd.Timestamp(period_to)
+
+    df_period = df_combined[
+        (df_combined['parsed_date'] >= period_from_ts) &
+        (df_combined['parsed_date'] <= period_to_ts)
+    ].copy()
+
+    period_months = []
+    monthly = {}
+
+    if not df_period.empty:
+        df_period['_month'] = df_period['parsed_date'].dt.to_period('M').astype(str)
+        full_range   = pd.period_range(start=period_from_ts, end=period_to_ts, freq='M')
+        period_months = [str(p) for p in full_range]
+
+        for month in period_months:
+            df_month   = df_period[df_period['_month'] == month]
+            month_total = len(df_month)
+            month_code  = int((df_month['imdrf_prefix'] == code).sum())
+            monthly[month] = {
+                'code_count':  month_code,
+                'total_count': month_total,
+                'proportion':  month_code / month_total if month_total > 0 else 0.0,
+            }
+
+    return {
+        'total_proportion': total_proportion,
+        'total_code_count': total_code_count,
+        'total_all_count':  total_all_count,
+        'period_months':    period_months,
+        'monthly':          monthly,
+    }
+
+
+def get_hist_code_table(df_hist):
+    """
+    Compute a code distribution table from the historical (2-year) dataset.
+
+    For each IMDRF prefix found in df_hist, returns its event count and
+    proportion relative to the total events in the dataset.
+
+    Args:
+        df_hist: df_exploded produced by prepare_data_for_insights()
+
+    Returns:
+        {
+            'total_events': int,
+            'rows': [
+                {'code': str, 'count': int, 'proportion': float},
+                ...
+            ]  -- sorted by count descending
+        }
+    """
+    # Exclude A24/A25
+    df = df_hist[
+        ~df_hist['imdrf_prefix'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
+    ].copy()
+
+    total_events = len(df)
+    if total_events == 0:
+        return {'total_events': 0, 'rows': []}
+
+    counts = df['imdrf_prefix'].value_counts()
+    rows = [
+        {
+            'code':       code,
+            'count':      int(cnt),
+            'proportion': round(int(cnt) / total_events, 6),
+        }
+        for code, cnt in counts.items()
+    ]
+    return {'total_events': total_events, 'rows': rows}
+
+
+def build_report_pdf(report_data, chart_images):
+    """
+    Build the IMDRF Trend Analysis PDF using ReportLab.
+
+    Args:
+        report_data: dict returned by compute_report_data()
+        chart_images: list of BytesIO PNG images (one per code in trends)
+
+    Returns:
+        bytes — raw PDF content
+    """
+    from io import BytesIO
+    from datetime import datetime as dt
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Table, TableStyle, Image, HRFlowable)
+    from reportlab.lib.units import inch, cm
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2*cm, rightMargin=2*cm,
+        topMargin=2*cm, bottomMargin=2*cm
+    )
+    page_width = A4[0] - 4*cm  # usable width
+
+    styles   = getSampleStyleSheet()
+    navy     = colors.HexColor('#1e3a5f')
+    light_bg = colors.HexColor('#f0f4ff')
+    alt_bg   = colors.HexColor('#e8f0fe')
+
+    title_style = ParagraphStyle('ReportTitle', parent=styles['Title'],
+                                 fontSize=18, textColor=navy, spaceAfter=4)
+    sub_style   = ParagraphStyle('ReportSub', parent=styles['Normal'],
+                                 fontSize=10, textColor=colors.grey, spaceAfter=12)
+    h2_style    = ParagraphStyle('H2', parent=styles['Heading2'],
+                                 fontSize=13, textColor=navy, spaceBefore=16, spaceAfter=8)
+    body_style  = ParagraphStyle('Body', parent=styles['Normal'],
+                                 fontSize=10, leading=15, spaceAfter=10)
+
+    def make_table(data_rows, col_widths, header_row):
+        table_data = [header_row] + data_rows
+        tbl = Table(table_data, colWidths=col_widths)
+        style = TableStyle([
+            ('BACKGROUND',  (0, 0), (-1, 0), navy),
+            ('TEXTCOLOR',   (0, 0), (-1, 0), colors.white),
+            ('FONTNAME',    (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE',    (0, 0), (-1, 0), 10),
+            ('ALIGN',       (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN',       (0, 1), (0, -1), 'LEFT'),
+            ('FONTSIZE',    (0, 1), (-1, -1), 9),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, light_bg]),
+            ('GRID',        (0, 0), (-1, -1), 0.5, colors.HexColor('#c7d2e8')),
+            ('TOPPADDING',  (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ])
+        tbl.setStyle(style)
+        return tbl
+
+    story = []
+
+    # ── Cover / Title ──────────────────────────────────────────────────────
+    story.append(Paragraph('IMDRF Trend Analysis Report', title_style))
+    story.append(Paragraph(f"Generated: {dt.now().strftime('%d %B %Y, %H:%M')}", sub_style))
+    story.append(HRFlowable(width='100%', thickness=1.5, color=navy, spaceAfter=16))
+
+    # ── Section 1: Overview ────────────────────────────────────────────────
+    story.append(Paragraph('1. Overview', h2_style))
+
+    mfr       = report_data['manufacturer']
+    pfrom     = report_data['period_from']
+    pto       = report_data['period_to']
+    mfr_evts  = report_data['mfr_events']
+    total     = report_data['grand_total']
+    lvl_lbl   = report_data['level_label']
+    grain_lbl = report_data['grain_label']
+
+    narrative = (
+        f"The manufacturer <b>{mfr}</b> was selected for analysis for the period "
+        f"<b>{pfrom}</b> to <b>{pto}</b>. The number of events identified for this "
+        f"manufacturer is <b>{mfr_evts:,}</b> and <b>{total:,}</b> events overall "
+        f"for all manufacturers. The top five events and their codes are as follows:"
+    )
+    story.append(Paragraph(narrative, body_style))
+
+    if report_data['top5']:
+        col_w = [page_width * 0.25, page_width * 0.4, page_width * 0.35]
+        header = ['Code', 'Events (Manufacturer)', 'Proportion of Mfr Events']
+        rows = [
+            [e['code'],
+             str(e['mfr_count']),
+             f"{e['proportion']*100:.1f}%"]
+            for e in report_data['top5']
+        ]
+        story.append(make_table(rows, col_w, header))
+    story.append(Spacer(1, 12))
+
+    # ── Section 2: Historical Baseline ────────────────────────────────────
+    story.append(Paragraph('2. Historical Baseline', h2_style))
+
+    hist_from = report_data['hist_from']
+    hist_to   = report_data['hist_to']
+    hist_intro = (
+        f"Using historical data of the preceding 2 years "
+        f"(<b>{hist_from}</b> to <b>{hist_to}</b>), "
+        f"the average proportion of events for the top five codes are calculated. "
+        f"The results are as follows:"
+    )
+    story.append(Paragraph(hist_intro, body_style))
+
+    if report_data['historical']:
+        col_w = [page_width * 0.25, page_width * 0.4, page_width * 0.35]
+        header = ['Code', 'Total Events (2-yr, All Mfrs)', 'Average Proportion (All Events)']
+        rows = [
+            [e['code'],
+             str(e['hist_total']),
+             f"{e['hist_proportion']*100:.2f}%"]
+            for e in report_data['historical']
+        ]
+        story.append(make_table(rows, col_w, header))
+    story.append(Spacer(1, 12))
+
+    # ── Current period table (all manufacturers) ──────────────────────────
+    story.append(Paragraph('Selected Period Distribution (All Manufacturers)', h2_style))
+    period_intro = (
+        f"The table below shows the total event counts and proportion for each code "
+        f"across <b>all manufacturers</b> during the selected period "
+        f"<b>{pfrom}</b> to <b>{pto}</b>."
+    )
+    story.append(Paragraph(period_intro, body_style))
+    if report_data.get('current_period'):
+        col_w = [page_width * 0.25, page_width * 0.4, page_width * 0.35]
+        header = ['Code', f'Total Events ({pfrom} – {pto}, All Mfrs)', 'Proportion (All Events)']
+        rows = [
+            [e['code'],
+             str(e['period_total']),
+             f"{e['period_proportion']*100:.2f}%"]
+            for e in report_data['current_period']
+        ]
+        story.append(make_table(rows, col_w, header))
+    story.append(Spacer(1, 12))
+
+    # ── Section 3: Trend Charts ────────────────────────────────────────────
+    story.append(Paragraph('3. Trend Analysis', h2_style))
+
+    trend_intro = (
+        f"An analysis of the trend was done on a <b>{grain_lbl.lower()}</b> basis "
+        f"for the period <b>{pfrom}</b> to <b>{pto}</b>. "
+        f"The graphs for each code for this manufacturer vs peers are given below:"
+    )
+    story.append(Paragraph(trend_intro, body_style))
+
+    img_width = page_width
+    for buf_img in chart_images:
+        img = Image(buf_img, width=img_width, height=img_width * 0.39)
+        story.append(img)
+        story.append(Spacer(1, 10))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()

@@ -190,7 +190,7 @@
             backdrop-filter: blur(10px);
         }
 
-        /* ── Source toggle (Upload vs Fetch) ────────────────── */
+        /* ── Source toggle (removed) ────────────────────────── */
         .source-toggle {
             display: flex;
             border: 2px solid var(--border);
@@ -371,6 +371,39 @@
         .fp-connector { flex: 1; height: 2px; background: var(--border); min-width: 28px; margin-bottom: 22px; transition: background 0.4s ease; }
         .fp-connector.done { background: #10b981; }
 
+        /* ── Download progress bar + counter ────────────────── */
+        .fp-dl-bar-wrap {
+            width: 100%; height: 6px;
+            background: var(--progress-bg);
+            border-radius: 10px;
+            margin-top: 14px;
+            overflow: hidden;
+        }
+        .fp-dl-bar-fill {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, #3b82f6 0%, #34d399 45%, #93c5fd 55%, #3b82f6 100%);
+            background-size: 250% 100%;
+            border-radius: 10px;
+            transition: width 0.6s ease;
+        }
+        .fp-dl-bar-fill.animating {
+            animation: fpBarShimmer 1.6s linear infinite;
+        }
+        @keyframes fpBarShimmer {
+            0%   { background-position: 100% 0; }
+            100% { background-position: -150% 0; }
+        }
+        .fp-dl-counter {
+            margin-top: 8px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            min-height: 1.2em;
+        }
+
+        /* ── Historical baseline table mini-bar ──────────────── */
+        .hist-bar-wrap { display:inline-block; width:90px; height:8px; background:var(--progress-bg); border-radius:6px; vertical-align:middle; overflow:hidden; }
+        .hist-bar-fill { height:100%; border-radius:6px; background:linear-gradient(90deg,#3b82f6,#34d399); transition:width 0.4s ease; }
+
         /* ── Section divider ──────────────────────────────────── */
         .section-divider {
             display: flex; align-items: center; gap: 12px;
@@ -434,6 +467,43 @@
         }
         .mfr-item:hover { background: var(--level-selected-bg); }
         .mfr-item input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+        .btn-mfr-toggle {
+            padding: 4px 14px;
+            border-radius: 6px;
+            border: 1px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 500;
+            transition: background 0.15s, color 0.15s;
+        }
+        .btn-mfr-toggle:hover { background: var(--primary); color: #fff; }
+        .mfr-loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 18px 12px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            grid-column: 1 / -1;
+        }
+        .mfr-loading .spinner-dark {
+            display: inline-block;
+            width: 18px; height: 18px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+
+        /* ── Manufacturer select disabled state ─────────────── */
+        select:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
 
         /* ── Top codes panel ─────────────────────────────────── */
         .top-codes-section {
@@ -743,6 +813,23 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* ── PDF Report Card ──────────────────────────────────── */
+        .report-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: var(--shadow-lg);
+            padding: 40px;
+            margin-top: 30px;
+            backdrop-filter: blur(10px);
+        }
+        .report-inputs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
     </style>
 </head>
 <body>
@@ -752,6 +839,10 @@
                 <a href="/" class="nav-btn">
                     <i class="fas fa-home"></i>
                     <span>Home</span>
+                </a>
+                <a href="/device-recall" class="nav-btn">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <span>Device Recall</span>
                 </a>
             </div>
             <div class="user-menu">
@@ -783,55 +874,25 @@
                     Data Source
                 </h2>
 
-                <!-- Toggle tabs -->
-                <div class="source-toggle">
-                    <button class="source-tab active" id="tabUpload" type="button">
-                        <i class="fas fa-upload"></i> Upload Cleaned File
-                    </button>
-                    <button class="source-tab" id="tabFetch" type="button">
-                        <i class="fas fa-cloud-download-alt"></i> Fetch from FDA MAUDE
-                    </button>
-                </div>
-
-                <!-- ── Panel A: Upload ───────────────────────────────── -->
-                <div class="source-panel active" id="panelUpload">
-                    <div class="insight-upload-area" id="insightUploadArea">
-                        <i class="fas fa-file-upload insight-upload-icon"></i>
-                        <div class="insight-upload-text">Click or drag &amp; drop your cleaned MAUDE file</div>
-                        <div class="insight-upload-hint">Accepts CSV, XLS, or XLSX with IMDRF Code, Manufacturer &amp; date columns</div>
-                        <input type="file" id="insightFileInput" accept=".csv,.xlsx,.xls">
-                    </div>
-                    <div class="insight-file-info" id="insightFileInfo">
-                        <i class="fas fa-file-csv" style="font-size:2rem; color:var(--primary); flex-shrink:0;"></i>
-                        <div style="flex:1; min-width:0;">
-                            <div id="insightFileName" style="font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
-                            <div id="insightFileSize" style="font-size:0.83rem; color:var(--text-secondary);"></div>
-                        </div>
-                        <button class="insight-file-remove" id="insightFileRemove" title="Remove file">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- ── Panel B: Fetch ────────────────────────────────── -->
-                <div class="source-panel" id="panelFetch">
+                <!-- ── Fetch from FDA MAUDE ─────────────────────────── -->
+                <div id="panelFetch">
                     <div class="fetch-inputs-grid">
                         <div class="form-group">
                             <label for="insightProductCode"><i class="fas fa-barcode"></i> Product Code</label>
                             <input type="text" id="insightProductCode" placeholder="e.g., FRY">
                         </div>
                         <div class="form-group">
-                            <label for="insightDateFrom"><i class="fas fa-calendar-alt"></i> Date From</label>
-                            <input type="date" id="insightDateFrom">
+                            <label for="insightYearFrom"><i class="fas fa-calendar-alt"></i> Year From</label>
+                            <input type="number" id="insightYearFrom" placeholder="e.g., 2023" min="2000" max="2035" style="width:100%;">
                         </div>
                         <div class="form-group">
-                            <label for="insightDateTo"><i class="fas fa-calendar-alt"></i> Date To</label>
-                            <input type="date" id="insightDateTo">
+                            <label for="insightYearTo"><i class="fas fa-calendar-alt"></i> Year To</label>
+                            <input type="number" id="insightYearTo" placeholder="e.g., 2025" min="2000" max="2035" style="width:100%;">
                         </div>
                     </div>
                     <div class="date-hint">
                         <i class="fas fa-info-circle"></i>
-                        Enter a date range spanning <strong>&nbsp;at least 1 year&nbsp;</strong> for meaningful trend analysis.
+                        Enter a year range (e.g., <strong>2023</strong> to <strong>2025</strong> fetches data from Jan 1, 2023 to Jan 1, 2025). Previous 2-year baseline will be auto-fetched in the background.
                     </div>
                     <button class="fetch-btn" id="fetchDataBtn">
                         <i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data
@@ -854,12 +915,23 @@
                                 <div class="fp-step-label">Extract Codes</div>
                             </div>
                         </div>
+                        <!-- Download progress bar + counter -->
+                        <div class="fp-dl-bar-wrap" id="fpDlBarWrap">
+                            <div class="fp-dl-bar-fill" id="fpDlBarFill"></div>
+                        </div>
+                        <div class="fp-dl-counter" id="fpDlCounter"></div>
                     </div>
                 </div>
             </div>
 
             <!-- ── Step 2 & 3: Shown after fetch ─────────────────────── -->
             <div id="postFetchSection" style="display: none;">
+
+                <div id="downloadCountsTop" style="display: none; margin-bottom: 14px;">
+                    <button type="button" class="analyze-btn show" id="downloadCountsAllBtn">
+                        <i class="fas fa-file-excel"></i> Download IMDRF Code Counts (All Levels)
+                    </button>
+                </div>
 
                 <div class="section-divider"><i class="fas fa-layer-group"></i> IMDRF Analysis Level</div>
 
@@ -910,6 +982,12 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label for="mfrSelect"><i class="fas fa-industry"></i> Manufacturer</label>
+                        <select id="mfrSelect" disabled>
+                            <option value="">— select a code first —</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label for="grainSelect"><i class="fas fa-layer-group"></i> Date Aggregation</label>
                         <select id="grainSelect">
                             <option value="M" selected>Monthly</option>
@@ -918,21 +996,11 @@
                     </div>
                 </div>
 
-                <div id="downloadCountsTop" style="display: none; margin-top: 14px;">
-                    <button type="button" class="analyze-btn show" id="downloadCountsAllBtn">
-                        <i class="fas fa-file-excel"></i> Download IMDRF Code Counts (All Levels)
-                    </button>
-                </div>
+                <button class="analyze-btn" id="analyzeBtn" style="margin-top: 14px;">
+                    <i class="fas fa-chart-bar"></i> Analyze Trends
+                </button>
 
             </div><!-- /#postFetchSection -->
-
-            <!-- ── Manufacturer + Top Codes (shown after code select) ── -->
-            <div class="manufacturer-section" id="manufacturerSelectGroup" style="display: none;">
-                <label style="margin-bottom: 0; font-size: 1rem;">
-                    <i class="fas fa-industry"></i> Select Manufacturers
-                </label>
-                <div class="manufacturer-checkboxes" id="manufacturerCheckboxes"></div>
-            </div>
 
             <div class="top-codes-section" id="topCodesSection" style="display: none;">
                 <h3 class="section-title">
@@ -947,10 +1015,6 @@
                 </div>
             </div>
 
-            <button class="analyze-btn" id="analyzeBtn" style="margin-top: 16px;">
-                <i class="fas fa-chart-bar"></i> Analyze Trends
-            </button>
-
             <div id="status" class="status"></div>
 
             <div class="results-section" id="resultsSection">
@@ -961,9 +1025,7 @@
 
                 <div class="metrics-grid" id="metricsGrid"></div>
 
-                <div class="chart-container">
-                    <div id="chartDiv"></div>
-                </div>
+                <div id="chartsContainer"></div>
 
                 <h3 class="section-title">
                     <i class="fas fa-table"></i>
@@ -976,6 +1038,7 @@
                             <tr>
                                 <th>Manufacturer</th>
                                 <th>Total Events</th>
+                                <th>Avg / Period</th>
                                 <th>Max per Period</th>
                                 <th>Periods with Events</th>
                             </tr>
@@ -986,21 +1049,153 @@
             </div>
 
         </div>
+
+        <!-- ── Historical Baseline Code Distribution Table ─────── -->
+        <div id="histCodeTableSection" style="display:none; margin-top:30px;">
+            <div class="table-container" style="position:relative;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+                    <h3 class="section-title" style="margin:0;">
+                        <i class="fas fa-history" style="color:var(--primary);"></i>
+                        Historical Baseline — IMDRF Code Distribution
+                        <span id="histTableYearLabel" style="font-size:0.82rem; font-weight:400; color:var(--text-secondary);"></span>
+                    </h3>
+                    <span id="histTableTotalBadge" style="font-size:0.82rem; color:var(--text-secondary);"></span>
+                </div>
+                <div id="histTableLoading" style="display:none; padding:18px 0; text-align:center; color:var(--text-secondary); font-size:0.88rem;">
+                    <span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span>
+                    Fetching baseline data in background…
+                </div>
+                <div id="histTableError" style="display:none; color:var(--status-error-text); font-size:0.88rem; padding:8px 0;"></div>
+                <div id="histTableWrap" style="display:none; overflow-x:auto; max-height:420px; overflow-y:auto;">
+                    <table id="histCodeTable" style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+                        <thead>
+                            <tr>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">#</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">Event Code</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">Count (2 yrs)</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">Proportion</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1; min-width:120px;">Share</th>
+                            </tr>
+                        </thead>
+                        <tbody id="histCodeTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Selected Period Code Distribution Table ─────────── -->
+        <div id="currentCodeTableSection" style="display:none; margin-top:30px;">
+            <div class="table-container" style="position:relative;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+                    <h3 class="section-title" style="margin:0;">
+                        <i class="fas fa-calendar-check" style="color:var(--primary);"></i>
+                        Selected Period — IMDRF Code Distribution
+                        <span id="currentTableLevelLabel" style="font-size:0.82rem; font-weight:400; color:var(--text-secondary);"></span>
+                    </h3>
+                    <span id="currentTableTotalBadge" style="font-size:0.82rem; color:var(--text-secondary);"></span>
+                </div>
+                <div id="currentTableWrap" style="overflow-x:auto; max-height:420px; overflow-y:auto;">
+                    <table id="currentCodeTable" style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+                        <thead>
+                            <tr>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">#</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">Event Code</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">Count</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">Proportion</th>
+                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1; min-width:120px;">Share</th>
+                            </tr>
+                        </thead>
+                        <tbody id="currentCodeTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── PDF Report Card ──────────────────────────────────── -->
+        <div class="report-card" id="reportCard" style="display: none;">
+            <h2 class="section-title">
+                <i class="fas fa-file-pdf" style="color:#dc2626;"></i>
+                Generate IMDRF Trend Report
+            </h2>
+            <p style="color:var(--text-secondary); margin-bottom:20px; font-size:0.93rem;">
+                Select a manufacturer and code to generate a downloadable PDF report with historical baseline
+                and trend charts. Historical data (preceding 2 years) will be auto-fetched from FDA MAUDE.
+            </p>
+
+            <div class="report-inputs-grid">
+                <div class="form-group">
+                    <label><i class="fas fa-barcode"></i> Product Code</label>
+                    <input type="text" id="reportProductCode" placeholder="e.g., FRY">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-industry"></i> Manufacturer</label>
+                    <select id="reportManufacturer">
+                        <option value="">Select manufacturer…</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-code"></i> Event Code</label>
+                    <select id="reportEventCode">
+                        <option value="ALL">ALL (Top 5 codes)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-calendar-alt"></i> Period From</label>
+                    <input type="date" id="reportPeriodFrom">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-calendar-alt"></i> Period To</label>
+                    <input type="date" id="reportPeriodTo">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-layer-group"></i> Frequency</label>
+                    <select id="reportGrain">
+                        <option value="M">Monthly</option>
+                        <option value="Q">Quarterly</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="analyze-btn show" id="generateReportBtn" style="margin-bottom:20px;">
+                <i class="fas fa-file-pdf"></i> Generate PDF Report
+            </button>
+
+            <div id="reportProgress" style="display:none;">
+                <div class="fetch-progress-bar">
+                    <div class="fp-step" id="rStep1">
+                        <div class="fp-step-icon"><i class="fas fa-cloud-download-alt"></i></div>
+                        <div class="fp-step-label">Fetching Historical Data</div>
+                    </div>
+                    <div class="fp-connector" id="rConn1"></div>
+                    <div class="fp-step" id="rStep2">
+                        <div class="fp-step-icon"><i class="fas fa-cogs"></i></div>
+                        <div class="fp-step-label">Preparing Data</div>
+                    </div>
+                    <div class="fp-connector" id="rConn2"></div>
+                    <div class="fp-step" id="rStep3">
+                        <div class="fp-step-icon"><i class="fas fa-file-pdf"></i></div>
+                        <div class="fp-step-label">Building PDF</div>
+                    </div>
+                </div>
+                <div id="reportStatusMsg" class="status info show" style="margin-top:12px;"></div>
+            </div>
+
+        </div>
+
     </div>
 
     <script>
         let preparedData = null;
-        let selectedManufacturers = [];
         let currentLevel = 1;
         let _fetchJobId = null;
         let _fetchPollTimer = null;
+        let reportHistFileId = null;       // set after step 2 of PDF generation
 
         const controlsSection = document.getElementById('controlsSection');
         const prefixSelect = document.getElementById('prefixSelect');
         const prefixLabel = document.getElementById('prefixLabel');
+        const mfrSelect = document.getElementById('mfrSelect');
         const grainSelect = document.getElementById('grainSelect');
-        const manufacturerSelectGroup = document.getElementById('manufacturerSelectGroup');
-        const manufacturerCheckboxes = document.getElementById('manufacturerCheckboxes');
         const analyzeBtn = document.getElementById('analyzeBtn');
         const downloadCountsAllBtn = document.getElementById('downloadCountsAllBtn');
         const downloadCountsTop = document.getElementById('downloadCountsTop');
@@ -1014,95 +1209,10 @@
         const fetchProgress = document.getElementById('fetchProgress');
         const postFetchSection = document.getElementById('postFetchSection');
         const insightProductCode = document.getElementById('insightProductCode');
-        const insightDateFrom = document.getElementById('insightDateFrom');
-        const insightDateTo = document.getElementById('insightDateTo');
+        const insightYearFrom = document.getElementById('insightYearFrom');
+        const insightYearTo = document.getElementById('insightYearTo');
+        let _fetchedYearFrom = null, _fetchedYearTo = null;
 
-        // Source toggle
-        const tabUpload = document.getElementById('tabUpload');
-        const tabFetch  = document.getElementById('tabFetch');
-        const panelUpload = document.getElementById('panelUpload');
-        const panelFetch  = document.getElementById('panelFetch');
-
-        tabUpload.addEventListener('click', () => {
-            tabUpload.classList.add('active');   tabFetch.classList.remove('active');
-            panelUpload.classList.add('active'); panelFetch.classList.remove('active');
-        });
-        tabFetch.addEventListener('click', () => {
-            tabFetch.classList.add('active');    tabUpload.classList.remove('active');
-            panelFetch.classList.add('active');  panelUpload.classList.remove('active');
-        });
-
-        // ── Upload panel ─────────────────────────────────────────────────
-        const insightUploadArea = document.getElementById('insightUploadArea');
-        const insightFileInput  = document.getElementById('insightFileInput');
-        const insightFileInfo   = document.getElementById('insightFileInfo');
-        const insightFileName   = document.getElementById('insightFileName');
-        const insightFileSize   = document.getElementById('insightFileSize');
-        const insightFileRemove = document.getElementById('insightFileRemove');
-
-        function fmtBytes(b) {
-            if (b === 0) return '0 B';
-            const k = 1024, s = ['B','KB','MB','GB'];
-            const i = Math.floor(Math.log(b) / Math.log(k));
-            return (b / Math.pow(k, i)).toFixed(1) + ' ' + s[i];
-        }
-
-        insightUploadArea.addEventListener('dragover', e => { e.preventDefault(); insightUploadArea.classList.add('drag-over'); });
-        insightUploadArea.addEventListener('dragleave', () => insightUploadArea.classList.remove('drag-over'));
-        insightUploadArea.addEventListener('drop', e => {
-            e.preventDefault();
-            insightUploadArea.classList.remove('drag-over');
-            const file = e.dataTransfer.files[0];
-            if (file) handleInsightFileUpload(file);
-        });
-
-        insightFileInput.addEventListener('change', e => {
-            if (e.target.files[0]) handleInsightFileUpload(e.target.files[0]);
-        });
-
-        insightFileRemove.addEventListener('click', () => {
-            insightFileInput.value = '';
-            insightFileInfo.classList.remove('show');
-            insightUploadArea.style.display = '';
-            postFetchSection.style.display = 'none';
-            preparedData = null;
-            hideStatus();
-        });
-
-        async function handleInsightFileUpload(file) {
-            const allowed = ['.csv', '.xlsx', '.xls'];
-            const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-            if (!allowed.includes(ext)) {
-                showStatus('❌ Invalid file type. Please upload CSV, XLS, or XLSX.', 'error');
-                return;
-            }
-            insightFileName.textContent = file.name;
-            insightFileSize.textContent = fmtBytes(file.size);
-            insightFileInfo.classList.add('show');
-            insightUploadArea.style.display = 'none';
-            showStatus('Processing file…', 'info');
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('level', currentLevel);
-
-            try {
-                const resp = await fetch('/api/imdrf-insights/prepare', { method: 'POST', body: formData });
-                const data = await parseJsonResponse(resp);
-                if (resp.ok) {
-                    postFetchSection.style.display = 'block';
-                    applyPreparedData(data);
-                } else {
-                    showStatus(`❌ ${data.error}`, 'error');
-                    insightFileInfo.classList.remove('show');
-                    insightUploadArea.style.display = '';
-                }
-            } catch (err) {
-                showStatus(`❌ ${err.message}`, 'error');
-                insightFileInfo.classList.remove('show');
-                insightUploadArea.style.display = '';
-            }
-        }
 
         // Level label mappings
         const levelLabels = {
@@ -1165,9 +1275,9 @@
 
             showStatus(`Updating to ${levelLabels[level]}…`, 'info');
             resultsSection.classList.remove('show');
-            manufacturerSelectGroup.style.display = 'none';
             analyzeBtn.classList.remove('show');
-            selectedManufacturers = [];
+            mfrSelect.innerHTML = '<option value="">— select a code first —</option>';
+            mfrSelect.disabled = true;
 
             try {
                 const response = await fetch('/api/imdrf-insights/refresh', {
@@ -1184,6 +1294,47 @@
             } catch (error) {
                 showStatus(`❌ Error: ${error.message}`, 'error');
             }
+        }
+
+        // ── Download progress bar helpers ────────────────────────────────
+        let _fpDisplayPct = 0;
+        let _fpHeartbeat  = null;
+
+        function setFpProgress(pct, animate) {
+            _fpDisplayPct = pct;
+            const fill = document.getElementById('fpDlBarFill');
+            if (!fill) return;
+            fill.style.width = `${pct}%`;
+            fill.classList.toggle('animating', animate);
+        }
+
+        function startFpHeartbeat(ceiling) {
+            clearInterval(_fpHeartbeat);
+            _fpHeartbeat = setInterval(() => {
+                if (_fpDisplayPct < ceiling - 0.5) {
+                    _fpDisplayPct = Math.min(ceiling, _fpDisplayPct + 0.35);
+                    const fill = document.getElementById('fpDlBarFill');
+                    if (fill) fill.style.width = `${_fpDisplayPct}%`;
+                }
+            }, 120);
+        }
+
+        function stopFpHeartbeat() { clearInterval(_fpHeartbeat); }
+
+        function setFpCounter(html) {
+            const el = document.getElementById('fpDlCounter');
+            if (el) el.innerHTML = html;
+        }
+
+        function buildDownloadMsg(processed, total, scanned) {
+            if (total > 0) {
+                const pct = Math.min(99, Math.floor(processed / total * 100));
+                return `<i class="fas fa-spinner fa-spin" style="margin-right:6px;color:var(--primary);"></i>` +
+                       `Downloading&hellip; <strong>${processed.toLocaleString()}</strong> / ${total.toLocaleString()} records <span style="color:var(--primary);font-weight:600;">(${pct}%)</span>`;
+            }
+            return `<i class="fas fa-spinner fa-spin" style="margin-right:6px;color:var(--primary);"></i>` +
+                   `Downloading&hellip; <strong>${processed.toLocaleString()}</strong> records` +
+                   (scanned > processed ? ` &nbsp;·&nbsp; ${scanned.toLocaleString()} scanned` : '');
         }
 
         // ── Step indicator helpers ───────────────────────────────────────
@@ -1209,11 +1360,12 @@
             preparedData = data;
             // Clear any previous analysis results so old graphs don't mislead
             resultsSection.classList.remove('show');
-            manufacturerSelectGroup.style.display = 'none';
             analyzeBtn.classList.remove('show');
-            selectedManufacturers = [];
             prefixLabel.innerHTML = `<i class="fas fa-code"></i> ${levelLabels[currentLevel]}`;
             prefixSelect.innerHTML = '<option value="">Select a code...</option>';
+            // Reset manufacturer dropdown
+            mfrSelect.innerHTML = '<option value="">— select a code first —</option>';
+            mfrSelect.disabled = true;
             const prefixCounts = data.prefix_counts || {};
             data.all_prefixes.forEach(prefix => {
                 const option = document.createElement('option');
@@ -1225,40 +1377,108 @@
             topCodesSection.style.display = 'block';
             setFetchStep(3, 'done');
             showStatus(`✅ Ready — ${data.rows_with_dates.toLocaleString()} rows with valid dates, ${data.all_prefixes.length} codes found at ${data.level_label || 'Level-' + currentLevel}`, 'success');
+
+            // ── Current period code distribution table ───────────────────
+            const currentSec = document.getElementById('currentCodeTableSection');
+            const currentTbody = document.getElementById('currentCodeTableBody');
+            const prefixCountsAll = data.prefix_counts || {};
+            const sortedCodes = Object.entries(prefixCountsAll)
+                .sort((a, b) => b[1] - a[1]);
+            const totalCurrentEvents = sortedCodes.reduce((s, e) => s + e[1], 0);
+            if (sortedCodes.length > 0) {
+                document.getElementById('currentTableLevelLabel').textContent =
+                    ` (${data.level_label || 'Level-' + currentLevel})`;
+                document.getElementById('currentTableTotalBadge').textContent =
+                    `Total events: ${totalCurrentEvents.toLocaleString()}`;
+                currentTbody.innerHTML = '';
+                sortedCodes.forEach(([code, count], idx) => {
+                    const prop = totalCurrentEvents > 0 ? count / totalCurrentEvents : 0;
+                    const pct = (prop * 100).toFixed(2);
+                    const barPct = Math.min(100, prop * 100);
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = '1px solid var(--border)';
+                    tr.innerHTML = `
+                        <td style="padding:8px 14px; color:var(--text-secondary); font-size:0.78rem;">${idx + 1}</td>
+                        <td style="padding:8px 14px; font-weight:600; font-family:monospace; color:var(--primary);">${code}</td>
+                        <td style="padding:8px 14px; text-align:right;">${count.toLocaleString()}</td>
+                        <td style="padding:8px 14px; text-align:right; font-weight:600;">${pct}%</td>
+                        <td style="padding:8px 14px;">
+                            <div class="hist-bar-wrap">
+                                <div class="hist-bar-fill" style="width:${barPct.toFixed(1)}%;"></div>
+                            </div>
+                        </td>
+                    `;
+                    currentTbody.appendChild(tr);
+                });
+                currentSec.style.display = 'block';
+            } else {
+                currentSec.style.display = 'none';
+            }
+
+            // Populate report card dropdowns
+            document.getElementById('reportCard').style.display = 'block';
+            const rpMfr = document.getElementById('reportManufacturer');
+            rpMfr.innerHTML = '<option value="">Select manufacturer…</option>';
+            (data.all_manufacturers || []).forEach(m => {
+                const o = document.createElement('option');
+                o.value = m; o.textContent = m;
+                rpMfr.appendChild(o);
+            });
+            const rpCode = document.getElementById('reportEventCode');
+            rpCode.innerHTML = '<option value="ALL">ALL (Top 5 codes)</option>';
+            (data.all_prefixes || []).forEach(c => {
+                const o = document.createElement('option');
+                o.value = c; o.textContent = c;
+                rpCode.appendChild(o);
+            });
+            // Pre-fill product code if fetch tab was used
+            const fetchProdCode = document.getElementById('insightProductCode');
+            if (fetchProdCode && fetchProdCode.value) {
+                document.getElementById('reportProductCode').value = fetchProdCode.value;
+            }
         }
 
         // ── Fetch button ─────────────────────────────────────────────────
         fetchDataBtn.addEventListener('click', async () => {
             const productCode = insightProductCode.value.trim();
-            const dateFrom = insightDateFrom.value;
-            const dateTo = insightDateTo.value;
+            const yearFrom = parseInt(insightYearFrom.value, 10);
+            const yearTo   = parseInt(insightYearTo.value, 10);
 
             if (!productCode) { showStatus('❌ Please enter a product code', 'error'); return; }
-            if (!dateFrom || !dateTo) { showStatus('❌ Please select both dates', 'error'); return; }
+            if (!insightYearFrom.value || !insightYearTo.value) { showStatus('❌ Please enter both Year From and Year To', 'error'); return; }
+            if (isNaN(yearFrom) || yearFrom < 2000 || yearFrom > 2035) { showStatus('❌ Year From must be between 2000 and 2035', 'error'); return; }
+            if (isNaN(yearTo)   || yearTo   < 2000 || yearTo   > 2035) { showStatus('❌ Year To must be between 2000 and 2035', 'error'); return; }
+            if (yearTo < yearFrom) {
+                showStatus('❌ Year To must be equal to or greater than Year From', 'error');
+                return;
+            }
 
-            // Enforce minimum 1-year range
-            const diffMs = new Date(dateTo) - new Date(dateFrom);
-            const diffDays = diffMs / (1000 * 60 * 60 * 24);
-            if (diffDays < 365) {
-                showStatus('❌ Date range must span at least 1 year for meaningful analysis', 'error');
-                return;
-            }
-            if (new Date(dateTo) <= new Date(dateFrom)) {
-                showStatus('❌ Date To must be after Date From', 'error');
-                return;
-            }
+            _fetchedYearFrom = yearFrom;
+            _fetchedYearTo   = yearTo;
+
+            // Convert whole years to full-year date range for the API
+            const dateFrom = `${yearFrom}-01-01`;
+            const dateTo   = `${yearTo}-12-31`;
 
             // Reset UI
             fetchDataBtn.disabled = true;
             fetchDataBtn.innerHTML = '<span class="spinner"></span> Fetching…';
             fetchProgress.style.display = 'block';
             postFetchSection.style.display = 'none';
+            document.getElementById('histCodeTableSection').style.display = 'none';
+            document.getElementById('currentCodeTableSection').style.display = 'none';
             resetFetchSteps();
             resultsSection.classList.remove('show');
-            manufacturerSelectGroup.style.display = 'none';
             analyzeBtn.classList.remove('show');
             prefixSelect.innerHTML = '<option value="">Select a code...</option>';
+            mfrSelect.innerHTML = '<option value="">— select a code first —</option>';
+            mfrSelect.disabled = true;
             if (_fetchPollTimer) clearInterval(_fetchPollTimer);
+            stopFpHeartbeat();
+            _fpDisplayPct = 0;
+            setFpProgress(3, true);
+            startFpHeartbeat(14);
+            setFpCounter('');
 
             setFetchStep(1, 'active');
             showStatus('Fetching data from FDA MAUDE…', 'info');
@@ -1281,19 +1501,48 @@
                         const pollResp = await fetch(`/api/pipeline/status/${_fetchJobId}`);
                         const poll = await parseJsonResponse(pollResp);
 
-                        const step = poll.step || 1;
+                        const step      = poll.step || 1;
+                        const processed = poll.processed || 0;
+                        const total     = poll.total     || 0;
+                        const scanned   = poll.scanned   || 0;
+
                         if (step >= 1) setFetchStep(1, step > 1 ? 'done' : 'active');
                         if (step >= 2) setFetchStep(2, step > 2 ? 'done' : 'active');
 
+                        if (poll.status === 'running') {
+                            if (step === 1) {
+                                // Update download counter + progress bar
+                                setFpCounter(buildDownloadMsg(processed, total, scanned));
+                                if (total > 0) {
+                                    const pct = Math.min(48, 5 + Math.floor((processed / total) * 43));
+                                    setFpProgress(Math.max(pct, _fpDisplayPct), true);
+                                    stopFpHeartbeat();
+                                    startFpHeartbeat(Math.min(pct + 5, 48));
+                                }
+                            } else if (step === 2) {
+                                setFpCounter('<i class="fas fa-magic" style="margin-right:6px;color:var(--primary);"></i>Cleaning &amp; processing data…');
+                                setFpProgress(Math.max(65, _fpDisplayPct), true);
+                                stopFpHeartbeat();
+                                startFpHeartbeat(88);
+                            }
+                        }
+
                         if (poll.status === 'failed') {
                             clearInterval(_fetchPollTimer);
+                            stopFpHeartbeat();
+                            setFpProgress(0, false);
+                            setFpCounter('');
                             showStatus(`❌ ${poll.error || 'Pipeline failed'}`, 'error');
                             fetchDataBtn.disabled = false;
                             fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
                         } else if (poll.status === 'done') {
                             clearInterval(_fetchPollTimer);
+                            stopFpHeartbeat();
+                            setFpProgress(90, true);
+                            startFpHeartbeat(95);
                             setFetchStep(2, 'done');
                             setFetchStep(3, 'active');
+                            setFpCounter('<i class="fas fa-code" style="margin-right:6px;color:var(--primary);"></i>Extracting IMDRF codes…');
                             showStatus('Extracting IMDRF codes…', 'info');
 
                             // Prepare insights from the pipeline result
@@ -1305,13 +1554,27 @@
                             const prepData = await parseJsonResponse(prepResp);
                             if (!prepResp.ok) { throw new Error(prepData.error || 'Code extraction failed'); }
 
+                            stopFpHeartbeat();
+                            setFpProgress(100, false);
+                            setFpCounter('<i class="fas fa-check-circle" style="margin-right:6px;color:#10b981;"></i>Data ready.');
                             postFetchSection.style.display = 'block';
                             applyPreparedData(prepData);
                             fetchDataBtn.disabled = false;
                             fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
+
+                            // ── Silent background: fetch previous 2-year baseline ──
+                            // e.g. input 2023-2025 → fetch 2021-01-01 to 2022-12-31
+                            reportHistFileId = null;  // clear any stale cache
+                            const histDateFrom = `${yearFrom - 2}-01-01`;
+                            const histDateTo   = `${yearFrom - 1}-12-31`;
+                            _showHistTableLoading(yearFrom - 2, yearFrom - 1);
+                            _fetchHistBaseline(productCode, histDateFrom, histDateTo, currentLevel);
                         }
                     } catch (err) {
                         clearInterval(_fetchPollTimer);
+                        stopFpHeartbeat();
+                        setFpProgress(0, false);
+                        setFpCounter('');
                         showStatus(`❌ ${err.message}`, 'error');
                         fetchDataBtn.disabled = false;
                         fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
@@ -1319,11 +1582,129 @@
                 }, 2000);
 
             } catch (err) {
+                stopFpHeartbeat();
+                setFpProgress(0, false);
+                setFpCounter('');
                 showStatus(`❌ ${err.message}`, 'error');
                 fetchDataBtn.disabled = false;
                 fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
             }
         });
+
+        // ── Background historical baseline fetch (silent, no UI progress) ──
+        async function _fetchHistBaseline(productCode, histDateFrom, histDateTo, level) {
+            try {
+                const startResp = await fetch('/api/pipeline/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_code: productCode,
+                        date_from: histDateFrom,
+                        date_to: histDateTo,
+                        pipeline_type: 'clean'
+                    })
+                });
+                if (!startResp.ok) return;
+                const startData = await startResp.json();
+                const histJobId = startData.job_id;
+                if (!histJobId) return;
+
+                // Poll silently until done
+                await new Promise((resolve) => {
+                    const timer = setInterval(async () => {
+                        try {
+                            const pollResp = await fetch(`/api/pipeline/status/${histJobId}`);
+                            if (!pollResp.ok) { clearInterval(timer); resolve(); return; }
+                            const poll = await pollResp.json();
+                            if (poll.status === 'done' || poll.status === 'failed') {
+                                clearInterval(timer);
+                                resolve();
+                            }
+                        } catch (_) { clearInterval(timer); resolve(); }
+                    }, 3000);
+                });
+
+                // Prepare IMDRF insights from the historical pipeline result
+                const prepResp = await fetch('/api/imdrf-insights/prepare-from-pipeline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: histJobId, level })
+                });
+                if (!prepResp.ok) return;
+                const prepData = await prepResp.json();
+                if (prepData && prepData.file_id) {
+                    reportHistFileId = prepData.file_id;  // cache for proportion/report use
+                    // Fetch and render the code distribution table
+                    try {
+                        const tblResp = await fetch('/api/imdrf-insights/hist-code-table', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ hist_file_id: reportHistFileId, level })
+                        });
+                        if (tblResp.ok) {
+                            const tblData = await tblResp.json();
+                            _renderHistCodeTable(tblData);
+                        } else {
+                            _showHistTableError('Could not load baseline table.');
+                        }
+                    } catch (_) {
+                        _showHistTableError('Could not load baseline table.');
+                    }
+                }
+            } catch (_) {
+                // Silent failure — user will re-fetch if needed
+                _showHistTableError('Background fetch failed silently.');
+            }
+        }
+
+        // ── Historical baseline table helpers ─────────────────────────────
+        function _showHistTableLoading(yearA, yearB) {
+            const sec = document.getElementById('histCodeTableSection');
+            sec.style.display = 'block';
+            document.getElementById('histTableYearLabel').textContent = ` (${yearA} – ${yearB})`;
+            document.getElementById('histTableLoading').style.display = 'block';
+            document.getElementById('histTableError').style.display = 'none';
+            document.getElementById('histTableWrap').style.display = 'none';
+            document.getElementById('histTableTotalBadge').textContent = '';
+        }
+
+        function _showHistTableError(msg) {
+            document.getElementById('histTableLoading').style.display = 'none';
+            const err = document.getElementById('histTableError');
+            err.style.display = 'block';
+            err.textContent = msg;
+        }
+
+        function _renderHistCodeTable(data) {
+            document.getElementById('histTableLoading').style.display = 'none';
+            const total = data.total_events || 0;
+            document.getElementById('histTableTotalBadge').textContent =
+                `Total events: ${total.toLocaleString()}`;
+
+            const tbody = document.getElementById('histCodeTableBody');
+            tbody.innerHTML = '';
+
+            (data.rows || []).forEach((row, idx) => {
+                const pct = (row.proportion * 100).toFixed(2);
+                const barPct = Math.min(100, row.proportion * 100);
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid var(--border)';
+                tr.innerHTML = `
+                    <td style="padding:8px 14px; color:var(--text-secondary); font-size:0.78rem;">${idx + 1}</td>
+                    <td style="padding:8px 14px; font-weight:600; font-family:monospace; color:var(--primary);">${row.code}</td>
+                    <td style="padding:8px 14px; text-align:right;">${row.count.toLocaleString()}</td>
+                    <td style="padding:8px 14px; text-align:right; font-weight:600;">${pct}%</td>
+                    <td style="padding:8px 14px;">
+                        <div class="hist-bar-wrap">
+                            <div class="hist-bar-fill" style="width:${barPct.toFixed(1)}%;"></div>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('histTableWrap').style.display = 'block';
+        }
 
         downloadCountsAllBtn.addEventListener('click', () => {
             if (!preparedData || !preparedData.file_id) {
@@ -1371,62 +1752,84 @@
             Plotly.newPlot('topCodesChart', [trace], layout, {responsive: true});
         });
 
+        // ── When code changes: populate manufacturer dropdown ────────────
         prefixSelect.addEventListener('change', async () => {
             const selectedPrefix = prefixSelect.value;
 
+            // Reset manufacturer + downstream
+            mfrSelect.innerHTML = '<option value="">Loading…</option>';
+            mfrSelect.disabled = true;
+            analyzeBtn.classList.remove('show');
+            resultsSection.classList.remove('show');
+
             if (!selectedPrefix || !preparedData) {
-                manufacturerSelectGroup.style.display = 'none';
-                analyzeBtn.classList.remove('show');
+                mfrSelect.innerHTML = '<option value="">— select a code first —</option>';
                 return;
             }
 
-            // Get top manufacturers for this prefix
             try {
                 const response = await fetch(`/api/imdrf-insights/top-manufacturers?prefix=${selectedPrefix}&file_id=${preparedData.file_id}&level=${currentLevel}`);
                 const data = await parseJsonResponse(response);
 
                 if (response.ok) {
-                    // Create checkboxes for all manufacturers, with top 5 pre-selected
-                    manufacturerCheckboxes.innerHTML = '';
-                    selectedManufacturers = [];
+                    mfrSelect.innerHTML = '<option value="">Select a manufacturer…</option>';
+                    // Sort: top manufacturers first, then rest alphabetically
+                    const topSet = new Set(data.top_manufacturers || []);
+                    const allMfrs = preparedData.all_manufacturers || [];
+                    const topOnes  = allMfrs.filter(m => topSet.has(m));
+                    const restOnes = allMfrs.filter(m => !topSet.has(m));
 
-                    preparedData.all_manufacturers.forEach((mfr, index) => {
-                        const isTop = data.top_manufacturers.includes(mfr);
-                        if (isTop) selectedManufacturers.push(mfr);
-
-                        const div = document.createElement('label');
-                        div.className = 'mfr-item';
-                        div.htmlFor = `mfr_${index}`;
-
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.id = `mfr_${index}`;
-                        checkbox.value = mfr;
-                        checkbox.checked = isTop;
-                        checkbox.addEventListener('change', (e) => {
-                            if (e.target.checked) selectedManufacturers.push(mfr);
-                            else selectedManufacturers = selectedManufacturers.filter(m => m !== mfr);
+                    if (topOnes.length > 0) {
+                        const grp = document.createElement('optgroup');
+                        grp.label = 'Top Manufacturers';
+                        topOnes.forEach(m => {
+                            const o = document.createElement('option');
+                            o.value = m; o.textContent = m;
+                            grp.appendChild(o);
                         });
-
-                        const span = document.createElement('span');
-                        span.textContent = mfr;
-
-                        div.appendChild(checkbox);
-                        div.appendChild(span);
-                        manufacturerCheckboxes.appendChild(div);
+                        mfrSelect.appendChild(grp);
+                    }
+                    if (restOnes.length > 0) {
+                        const grp = document.createElement('optgroup');
+                        grp.label = 'All Manufacturers';
+                        restOnes.forEach(m => {
+                            const o = document.createElement('option');
+                            o.value = m; o.textContent = m;
+                            grp.appendChild(o);
+                        });
+                        mfrSelect.appendChild(grp);
+                    }
+                    mfrSelect.disabled = false;
+                } else {
+                    // Fallback: populate from all_manufacturers without grouping
+                    mfrSelect.innerHTML = '<option value="">Select a manufacturer…</option>';
+                    (preparedData.all_manufacturers || []).forEach(m => {
+                        const o = document.createElement('option');
+                        o.value = m; o.textContent = m;
+                        mfrSelect.appendChild(o);
                     });
-
-                    manufacturerSelectGroup.style.display = 'block';
-                    analyzeBtn.classList.add('show');
+                    mfrSelect.disabled = false;
                 }
             } catch (error) {
                 showStatus(`❌ ${error.message}`, 'error');
+                mfrSelect.innerHTML = '<option value="">— error loading manufacturers —</option>';
             }
         });
 
+        // ── When manufacturer changes: show Analyze button ─────────────
+        mfrSelect.addEventListener('change', () => {
+            if (mfrSelect.value && prefixSelect.value) {
+                analyzeBtn.classList.add('show');
+            } else {
+                analyzeBtn.classList.remove('show');
+            }
+            resultsSection.classList.remove('show');
+        });
+
         analyzeBtn.addEventListener('click', async () => {
-            if (!preparedData || !prefixSelect.value || selectedManufacturers.length === 0) {
-                showStatus('❌ Please select a prefix and at least one manufacturer', 'error');
+            const manufacturer = mfrSelect.value;
+            if (!preparedData || !prefixSelect.value || !manufacturer) {
+                showStatus('❌ Please select an IMDRF code and a manufacturer', 'error');
                 return;
             }
 
@@ -1436,17 +1839,19 @@
             resultsSection.classList.remove('show');
 
             try {
+                const yearFrom = _fetchedYearFrom || new Date().getFullYear();
+                const yearTo   = _fetchedYearTo   || yearFrom;
                 const response = await fetch('/api/imdrf-insights/analyze', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         file_id: preparedData.file_id,
                         prefix: prefixSelect.value,
-                        manufacturers: selectedManufacturers,
+                        manufacturers: [manufacturer],
                         grain: grainSelect.value,
-                        level: currentLevel
+                        level: currentLevel,
+                        date_from: `${yearFrom}-01-01`,
+                        date_to: `${yearTo}-12-31`
                     })
                 });
 
@@ -1488,8 +1893,12 @@
             const metricsGrid = document.getElementById('metricsGrid');
             const grainLabel = {M: 'Monthly', Q: 'Quarterly'}[data.grain] || 'Period';
             const levelLabel = data.level_label || `Level-${data.level || currentLevel}`;
-            const thresholdPct = (data.threshold !== null && data.threshold !== undefined)
-                ? data.threshold.toFixed(2) : 'N/A';
+
+            // Overall avg/period across all selected manufacturers combined
+            const totalEvents = (data.statistics || []).reduce((s, st) => s + (st.total_events || 0), 0);
+            const overallAvg = (data.statistics && data.statistics.length > 0 && data.statistics[0].mean_per_period !== undefined)
+                ? (data.statistics.reduce((s, st) => s + (st.mean_per_period || 0), 0) / data.statistics.length).toFixed(2)
+                : '—';
 
             metricsGrid.innerHTML = `
                 <div class="metric-card">
@@ -1497,82 +1906,101 @@
                     <div class="metric-label">Selected Code (${levelLabel})</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">${thresholdPct}%</div>
-                    <div class="metric-label">Code Share (% of all events)</div>
-                </div>
-                <div class="metric-card">
                     <div class="metric-value">${data.total_selected_code ?? '—'}</div>
                     <div class="metric-label">Total Events for Code</div>
                 </div>
                 <div class="metric-card">
-                    <div class="metric-value">${selectedManufacturers.length}</div>
-                    <div class="metric-label">Manufacturers Selected</div>
+                    <div class="metric-value">${overallAvg}</div>
+                    <div class="metric-label">Avg Events / ${grainLabel === 'Monthly' ? 'Month' : 'Quarter'} (across mfrs)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${mfrSelect.value ? '1' : '—'}</div>
+                    <div class="metric-label">Manufacturer</div>
                 </div>
             `;
 
-            // Build x-axis labels from dates
-            const traces = [];
-            let allLabels = [];
+            // Build one chart per year
+            const chartsContainer = document.getElementById('chartsContainer');
+            chartsContainer.innerHTML = '';
 
-            Object.keys(data.manufacturer_series).forEach((mfr, index) => {
-                const series = data.manufacturer_series[mfr];
-                const labels = series.dates.map(d => formatPeriodLabel(d, data.grain));
-                if (index === 0) allLabels = labels;
-                traces.push({
-                    x: labels,
-                    y: series.values,
-                    mode: 'lines+markers',
-                    name: mfr,
-                    type: 'scatter',
-                    yaxis: 'y'
-                });
-            });
+            const yearFrom = _fetchedYearFrom || new Date().getFullYear();
+            const yearTo   = _fetchedYearTo   || yearFrom;
 
-            // Add threshold as a horizontal line on secondary Y-axis
-            if (allLabels.length > 0 && data.threshold !== null && data.threshold !== undefined) {
-                traces.push({
-                    x: [allLabels[0], allLabels[allLabels.length - 1]],
-                    y: [data.threshold, data.threshold],
-                    mode: 'lines',
-                    name: `Threshold (${thresholdPct}%)`,
-                    yaxis: 'y2',
-                    line: {dash: 'dash', color: '#ef4444', width: 2},
-                    hovertemplate: `Threshold: ${thresholdPct}%<extra></extra>`
+            // Palette for avg lines (dashed)
+            const avgColors = ['#ef4444','#f59e0b','#8b5cf6','#06b6d4','#ec4899'];
+
+            for (let yr = yearFrom; yr <= yearTo; yr++) {
+                const chartWrap = document.createElement('div');
+                chartWrap.className = 'chart-container';
+                chartWrap.style.marginBottom = '28px';
+                const chartDivEl = document.createElement('div');
+                chartDivEl.id = `chartDiv_${yr}`;
+                chartWrap.appendChild(chartDivEl);
+                chartsContainer.appendChild(chartWrap);
+
+                const traces = [];
+                let allLabels = [];
+                // Map of mfr → per-year values (for computing per-year avg)
+                const mfrYearValues = {};
+
+                Object.keys(data.manufacturer_series).forEach((mfr, index) => {
+                    const series = data.manufacturer_series[mfr];
+                    const filtered = series.dates.reduce((acc, d, i) => {
+                        if (d.startsWith(String(yr))) {
+                            acc.labels.push(formatPeriodLabel(d, data.grain));
+                            acc.values.push(series.values[i]);
+                        }
+                        return acc;
+                    }, {labels: [], values: []});
+                    if (index === 0) allLabels = filtered.labels;
+                    mfrYearValues[mfr] = filtered.values;
+                    traces.push({
+                        x: filtered.labels,
+                        y: filtered.values,
+                        mode: 'lines+markers',
+                        name: mfr,
+                        type: 'scatter'
+                    });
                 });
+
+                // Per-year avg lines — avg computed from this year's values only
+                if (allLabels.length > 0) {
+                    Object.keys(mfrYearValues).forEach((mfr, index) => {
+                        const vals = mfrYearValues[mfr];
+                        if (!vals || vals.length === 0) return;
+                        const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+                        const color = avgColors[index % avgColors.length];
+                        const unit = grainLabel === 'Monthly' ? 'mo' : 'qtr';
+                        traces.push({
+                            x: allLabels,
+                            y: Array(allLabels.length).fill(avg),
+                            mode: 'lines',
+                            name: `${mfr} — Avg ${yr} (${avg.toFixed(2)}/${unit})`,
+                            line: {dash: 'dash', color, width: 1.5},
+                            hovertemplate: `${mfr} avg ${yr}: ${avg.toFixed(2)}<extra></extra>`,
+                            showlegend: true
+                        });
+                    });
+                }
+
+                if (allLabels.length === 0) {
+                    chartDivEl.innerHTML = `<p style="text-align:center;color:var(--text-secondary);padding:40px 0;">No data available for ${yr}</p>`;
+                } else {
+                    const layout = {
+                        title: {text: `IMDRF ${levelLabel} — Code ${data.selected_prefix} — ${yr} ${grainLabel} Trend`, font: {size: 15}},
+                        xaxis: {title: grainLabel === 'Monthly' ? 'Month' : 'Quarter', tickangle: -35, automargin: true},
+                        yaxis: {title: 'Count (Events)', rangemode: 'tozero'},
+                        hovermode: 'x unified',
+                        showlegend: true,
+                        legend: {orientation: 'h', y: -0.3},
+                        height: 420,
+                        margin: {b: 110}
+                    };
+                    Plotly.newPlot(`chartDiv_${yr}`, traces, layout, {responsive: true});
+                }
             }
 
-            const layout = {
-                title: {
-                    text: `IMDRF ${levelLabel} — Code ${data.selected_prefix} — ${grainLabel} Trend`,
-                    font: {size: 15}
-                },
-                xaxis: {
-                    title: grainLabel === 'Monthly' ? 'Month' : 'Quarter',
-                    tickangle: -35,
-                    automargin: true
-                },
-                yaxis: {
-                    title: 'Count (Events)',
-                    rangemode: 'tozero'
-                },
-                yaxis2: {
-                    title: 'Code Share (%)',
-                    overlaying: 'y',
-                    side: 'right',
-                    showgrid: false,
-                    rangemode: 'tozero',
-                    ticksuffix: '%'
-                },
-                hovermode: 'x unified',
-                showlegend: true,
-                legend: {orientation: 'h', y: -0.25},
-                height: 520,
-                margin: {b: 90}
-            };
-
-            Plotly.newPlot('chartDiv', traces, layout, {responsive: true});
-
-            // Populate statistics table
+            // Populate statistics table (add Avg/Period column)
             const tbody = document.getElementById('statsTableBody');
             tbody.innerHTML = '';
 
@@ -1581,12 +2009,171 @@
                 row.innerHTML = `
                     <td style="font-weight: 600;">${stat.manufacturer}</td>
                     <td>${stat.total_events}</td>
+                    <td>${stat.mean_per_period !== undefined ? stat.mean_per_period.toFixed(2) : '—'}</td>
                     <td>${stat.max_per_period}</td>
                     <td>${stat.periods_with_events}</td>
                 `;
                 tbody.appendChild(row);
             });
         }
+
+        // ── PDF Report Card ───────────────────────────────────────────────
+
+        function setReportStep(step, state) {
+            const el = document.getElementById(`rStep${step}`);
+            if (!el) return;
+            const icon = el.querySelector('.fp-step-icon');
+            icon.classList.remove('active', 'done');
+            if (state === 'active') icon.classList.add('active');
+            if (state === 'done')   icon.classList.add('done');
+            const conn = document.getElementById(`rConn${step - 1}`);
+            if (conn) conn.classList.toggle('done', state === 'done');
+        }
+
+        async function pollPipelineUntilDone(jobId) {
+            while (true) {
+                await new Promise(r => setTimeout(r, 2000));
+                const r = await fetch(`/api/pipeline/status/${jobId}`);
+                const d = await parseJsonResponse(r);
+                if (d.status === 'done') return d;
+                if (d.status === 'failed') throw new Error(d.error || 'Historical pipeline failed');
+            }
+        }
+
+        function toMMDDYYYY(isoDate) {
+            const [y, m, d] = isoDate.split('-');
+            return `${m}-${d}-${y}`;
+        }
+
+        function subtractTwoYears(isoDate) {
+            const dt = new Date(isoDate + 'T00:00:00');
+            dt.setFullYear(dt.getFullYear() - 2);
+            return dt.toISOString().slice(0, 10);  // keep YYYY-MM-DD (what the pipeline expects)
+        }
+
+        document.getElementById('generateReportBtn').addEventListener('click', async () => {
+            const productCode  = document.getElementById('reportProductCode').value.trim();
+            const manufacturer = document.getElementById('reportManufacturer').value;
+            const eventCode    = document.getElementById('reportEventCode').value || 'ALL';
+            const periodFrom   = document.getElementById('reportPeriodFrom').value;
+            const periodTo     = document.getElementById('reportPeriodTo').value;
+            const grain        = document.getElementById('reportGrain').value;
+
+            if (!productCode) { showStatus('❌ Product code is required for historical data fetch', 'error'); return; }
+            if (!manufacturer) { showStatus('❌ Please select a manufacturer', 'error'); return; }
+            if (!periodFrom || !periodTo) { showStatus('❌ Please enter both period dates', 'error'); return; }
+            if (new Date(periodTo) <= new Date(periodFrom)) { showStatus('❌ Period To must be after Period From', 'error'); return; }
+
+            const genBtn = document.getElementById('generateReportBtn');
+            genBtn.disabled = true;
+            genBtn.innerHTML = '<span class="spinner"></span> Generating…';
+            document.getElementById('reportProgress').style.display = 'block';
+            const rMsg = document.getElementById('reportStatusMsg');
+            rMsg.className = 'status info show';
+            rMsg.textContent = 'Starting historical data fetch…';
+            [1, 2, 3].forEach(s => setReportStep(s, 'pending'));
+            ['rConn1', 'rConn2'].forEach(id => {
+                const e = document.getElementById(id);
+                if (e) e.classList.remove('done');
+            });
+
+            try {
+                // ── Step 1: Fetch 2-year historical data ──────────────────
+                setReportStep(1, 'active');
+                const histFrom = subtractTwoYears(periodFrom);
+                const histTo   = periodFrom;  // YYYY-MM-DD — same format the pipeline expects
+                rMsg.textContent = `Fetching historical data (${histFrom} → ${histTo})…`;
+
+                const startResp = await fetch('/api/pipeline/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_code: productCode,
+                        date_from: histFrom,
+                        date_to: histTo,
+                        pipeline_type: 'clean'
+                    })
+                });
+                const startData = await parseJsonResponse(startResp);
+                if (!startResp.ok) throw new Error(startData.error || 'Failed to start historical fetch');
+                const histJobId = startData.job_id;
+
+                await pollPipelineUntilDone(histJobId);
+                setReportStep(1, 'done');
+
+                // ── Step 2: Prepare historical IMDRF insights ─────────────
+                setReportStep(2, 'active');
+                rMsg.textContent = 'Preparing historical IMDRF codes…';
+
+                const prepResp = await fetch('/api/imdrf-insights/prepare-from-pipeline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: histJobId, level: currentLevel })
+                });
+                const histData = await parseJsonResponse(prepResp);
+                if (!prepResp.ok) throw new Error(histData.error || 'Historical data preparation failed');
+                reportHistFileId = histData.file_id;  // cache for proportion calculations
+                setReportStep(2, 'done');
+
+                // ── Step 3: Generate PDF ───────────────────────────────────
+                setReportStep(3, 'active');
+                rMsg.textContent = 'Building PDF report (this may take ~15 seconds)…';
+
+                const pdfResp = await fetch('/api/imdrf-insights/generate-pdf-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_id:      preparedData.file_id,
+                        hist_file_id: histData.file_id,
+                        manufacturer,
+                        code:         eventCode,
+                        period_from:  periodFrom,
+                        period_to:    periodTo,
+                        grain,
+                        level:        currentLevel
+                    })
+                });
+
+                if (!pdfResp.ok) {
+                    let errMsg = 'PDF generation failed';
+                    try { const ed = await pdfResp.json(); errMsg = ed.error || errMsg; } catch (_) {}
+                    throw new Error(errMsg);
+                }
+
+                const blob = await pdfResp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const safeMfr = manufacturer.replace(/[^A-Za-z0-9]/g, '_').slice(0, 30);
+                a.download = `IMDRF_Report_${safeMfr}_${periodFrom}_${periodTo}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                setReportStep(3, 'done');
+                rMsg.className = 'status success show';
+                rMsg.textContent = '✅ Report downloaded successfully!';
+
+            } catch (err) {
+                rMsg.className = 'status error show';
+                rMsg.textContent = `❌ ${err.message}`;
+            } finally {
+                genBtn.disabled = false;
+                genBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate PDF Report';
+            }
+        });
+
+        // ── Invalidate cached hist data when key inputs change ────────────
+        ['reportProductCode', 'reportPeriodFrom'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => {
+                reportHistFileId = null;
+            });
+        });
+        document.getElementById('reportProductCode').addEventListener('input', () => {
+            reportHistFileId = null;
+        });
+
     </script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>

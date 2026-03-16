@@ -8,7 +8,7 @@ import re
 import time
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import requests
 from flask import Flask, request, render_template, send_file, jsonify, redirect, url_for, session, Response, stream_with_context
@@ -540,7 +540,19 @@ def api_prepare_insights():
 
         from backend.imdrf_insights import prepare_data_for_insights  # lazy import
         # Prepare data for insights at the specified level
-        result = prepare_data_for_insights(input_path, level=level)
+        result = prepare_data_for_insights(input_path, level=level, annex_file_path=DEFAULT_IMDRF_PATH)
+
+        # Validate minimum 1-year date range
+        valid_dates = result['df_exploded']['parsed_date'].dropna()
+        if len(valid_dates) > 0:
+            date_span = (valid_dates.max() - valid_dates.min()).days
+            if date_span < 365:
+                os.remove(input_path)
+                return jsonify({
+                    'error': f'Uploaded file only contains {date_span} days of data '
+                             f'({valid_dates.min().strftime("%Y-%m-%d")} to {valid_dates.max().strftime("%Y-%m-%d")}). '
+                             f'At least 1 year (365 days) is required for meaningful trend analysis.'
+                }), 400
 
         # Store file info in session for later use (level can be toggled later)
         session[f'insights_file_{file_id}'] = {
@@ -589,7 +601,7 @@ def api_prepare_insights_from_pipeline():
 
     try:
         from backend.imdrf_insights import prepare_data_for_insights  # lazy import
-        result = prepare_data_for_insights(cleaned_path, level=level)
+        result = prepare_data_for_insights(cleaned_path, level=level, annex_file_path=DEFAULT_IMDRF_PATH)
 
         # Reuse the cleaned file path as the file_id key for refresh calls
         file_id = f"{current_user.id}_{job_id}"
@@ -641,7 +653,7 @@ def api_refresh_insights():
             return jsonify({'error': 'File not found. Please upload again.'}), 404
 
         from backend.imdrf_insights import prepare_data_for_insights  # lazy import (cached after first call)
-        result = prepare_data_for_insights(file_path, level=level)
+        result = prepare_data_for_insights(file_path, level=level, annex_file_path=DEFAULT_IMDRF_PATH)
 
         return jsonify({
             'success': True,
@@ -717,6 +729,8 @@ def api_analyze_insights():
     prefix = data.get('prefix')
     manufacturers = data.get('manufacturers', [])
     grain = data.get('grain', 'M')
+    date_from = data.get('date_from')  # optional YYYY-MM-DD
+    date_to = data.get('date_to')      # optional YYYY-MM-DD
 
     if not file_id or not prefix or not manufacturers:
         return jsonify({'error': 'Missing required parameters'}), 400
@@ -751,7 +765,9 @@ def api_analyze_insights():
             prefix,
             manufacturers,
             grain,
-            level=level
+            level=level,
+            date_from=date_from,
+            date_to=date_to
         )
 
         # Convert pandas data to JSON-serializable format
@@ -819,28 +835,232 @@ def api_download_code_counts_xlsx():
         if not file_path or not os.path.exists(file_path):
             return jsonify({'error': 'File not found. Please upload again.'}), 404
 
-        from backend.imdrf_insights import get_imdrf_code_counts_all_levels  # lazy import
-        counts_by_level = get_imdrf_code_counts_all_levels(file_path)
+        from backend.imdrf_insights import (  # lazy import
+            get_imdrf_code_manufacturer_monthly_counts,
+            get_patient_problem_e_code_mfr_monthly_counts,
+            get_imdrf_code_counts_all_levels_with_descriptions,
+            get_imdrf_code_monthly_counts,
+        )
+        mfr_monthly = get_imdrf_code_manufacturer_monthly_counts(file_path)
+        pat_mfr_monthly = get_patient_problem_e_code_mfr_monthly_counts(file_path, DEFAULT_IMDRF_PATH)
+        summary_counts = get_imdrf_code_counts_all_levels_with_descriptions(file_path, DEFAULT_IMDRF_PATH)
+        summary_monthly = get_imdrf_code_monthly_counts(file_path)
 
         from openpyxl import Workbook
-        from openpyxl.styles import Font
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        import calendar as _calendar
+
+        all_months = mfr_monthly['months']
+        data_by_level = mfr_monthly['data']
+
+        def _fmt_month(ym):
+            try:
+                y, m = ym.split('-')
+                return f"{_calendar.month_abbr[int(m)]}-{y}"
+            except Exception:
+                return ym
+
+        month_labels = [_fmt_month(m) for m in all_months]
+
+        # Styles
+        hdr_font   = Font(bold=True, color="FFFFFF")
+        hdr_fill   = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+        code_font  = Font(bold=True, color="1E40AF")
+        code_fill  = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
+        total_font = Font(bold=True)
+        total_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+        center     = Alignment(horizontal='center')
+
+        level_sheet_names = {1: 'Level-1 (3 chars)', 2: 'Level-2 (5 chars)', 3: 'Level-3 (7 chars)'}
 
         wb = Workbook()
-        ws = wb.active
-        ws.title = "IMDRF Code Counts"
+        wb.remove(wb.active)  # remove default blank sheet
 
-        bold_font = Font(bold=True)
+        # ── Sheet 1: Summary (All Manufacturers) — one sheet, all 3 levels ──
+        summary_months = summary_monthly.get('months', [])
+        summary_month_labels = [_fmt_month(m) for m in summary_months]
+        num_summary_months = len(summary_months)
+
+        ws_sum = wb.create_sheet(title='Summary (All Mfrs)')
+        sum_hdr_font  = Font(bold=True, color="FFFFFF")
+        sum_hdr_fill  = PatternFill(start_color="1E40AF", end_color="1E40AF", fill_type="solid")
+        sum_lvl_font  = Font(bold=True, color="1E3A5F")
+        sum_lvl_fill  = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
+        sum_tot_font  = Font(bold=True)
+        sum_tot_fill  = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
+        num_sum_cols = 4 + num_summary_months  # Code + Desc + Total + Avg + months
+
+        sum_row = 1  # explicit row counter
+        for level in [1, 2, 3]:
+            level_label_sum = f'LEVEL-{level} ({[3,5,7][level-1]} chars)'
+            # Level header row (coloured background across all columns)
+            ws_sum.cell(row=sum_row, column=1, value=level_label_sum).font = sum_lvl_font
+            for c in range(1, num_sum_cols + 1):
+                ws_sum.cell(row=sum_row, column=c).fill = sum_lvl_fill
+            sum_row += 1
+
+            # Column header row
+            col_hdr = ['IMDRF Code', 'Description', 'Total', 'Avg/Month'] + summary_month_labels
+            for ci, h in enumerate(col_hdr, 1):
+                cell = ws_sum.cell(row=sum_row, column=ci, value=h)
+                cell.font = sum_hdr_font
+                cell.fill = sum_hdr_fill
+                cell.alignment = center
+            sum_row += 1
+
+            level_codes = summary_counts.get(level, {})
+            level_monthly = summary_monthly.get('counts', {}).get(level, {})
+            # Sort by total descending
+            for code in sorted(level_codes.keys(), key=lambda c: -level_codes[c].get('count', 0)):
+                entry = level_codes[code]
+                total = entry.get('count', 0)
+                avg = round(total / num_summary_months, 2) if num_summary_months > 0 else 0
+                code_monthly = level_monthly.get(str(code), {})
+                month_vals = [code_monthly.get(m, 0) for m in summary_months]
+                row_vals = [str(code), entry.get('description', ''), total, avg] + month_vals
+                for ci, v in enumerate(row_vals, 1):
+                    ws_sum.cell(row=sum_row, column=ci, value=v)
+                sum_row += 1
+
+            # Grand total row for this level
+            grand = sum(c.get('count', 0) for c in level_codes.values())
+            grand_monthly = [
+                sum(level_monthly.get(str(code), {}).get(m, 0) for code in level_codes)
+                for m in summary_months
+            ]
+            tot_vals = ['TOTAL', '', grand,
+                        round(grand / num_summary_months, 2) if num_summary_months else 0] + grand_monthly
+            for ci, v in enumerate(tot_vals, 1):
+                cell = ws_sum.cell(row=sum_row, column=ci, value=v)
+                cell.font = sum_tot_font
+                cell.fill = sum_tot_fill
+            sum_row += 2  # blank separator before next level
+
+        # Auto-fit summary sheet columns
+        for col in ws_sum.columns:
+            col_letter = get_column_letter(col[0].column)
+            max_len = max((len(str(cell.value)) for cell in col if cell.value), default=8)
+            ws_sum.column_dimensions[col_letter].width = min(max_len + 3, 45)
 
         for level in [1, 2, 3]:
-            level_label = f"Level-{level} Codes"
-            ws.append([level_label, ""])
-            ws.cell(row=ws.max_row, column=1).font = bold_font
+            ws = wb.create_sheet(title=level_sheet_names[level])
+            level_data = data_by_level.get(level, {})
+            row_num = 1
 
-            level_counts = counts_by_level.get(level, {})
-            for code in sorted(level_counts.keys(), key=str):
-                ws.append([str(code), level_counts.get(code, 0)])
+            for code in sorted(level_data.keys()):
+                mfr_dict = level_data[code]
+                manufacturers = sorted(mfr_dict.keys())
 
-            ws.append(["", ""])
+                # ── Code header row ──────────────────────────────────
+                num_cols = 1 + len(manufacturers) + 1  # Month + mfrs + Total
+                code_cell = ws.cell(row=row_num, column=1, value=f"Code: {code}")
+                code_cell.font = code_font
+                code_cell.fill = code_fill
+                # Fill the rest of the code header row with the same background
+                for c in range(2, num_cols + 1):
+                    ws.cell(row=row_num, column=c).fill = code_fill
+                row_num += 1
+
+                # ── Column header row ────────────────────────────────
+                headers = ['Month'] + manufacturers + ['Total']
+                for col_idx, h in enumerate(headers, 1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=h)
+                    cell.font = hdr_font
+                    cell.fill = hdr_fill
+                    cell.alignment = center
+                row_num += 1
+
+                # ── Monthly data rows (skip months with zero total) ──
+                mfr_totals = {mfr: 0 for mfr in manufacturers}
+                for month_str, month_label in zip(all_months, month_labels):
+                    counts_this_month = [mfr_dict[mfr].get(month_str, 0) for mfr in manufacturers]
+                    row_total = sum(counts_this_month)
+                    if row_total == 0:
+                        continue  # skip months with no events
+                    ws.cell(row=row_num, column=1, value=month_label)
+                    for col_idx, (mfr, cnt) in enumerate(zip(manufacturers, counts_this_month), 2):
+                        ws.cell(row=row_num, column=col_idx, value=cnt)
+                        mfr_totals[mfr] += cnt
+                    ws.cell(row=row_num, column=len(headers), value=row_total)
+                    row_num += 1
+
+                # ── Total row ────────────────────────────────────────
+                grand_total = sum(mfr_totals.values())
+                total_vals = ['Total'] + [mfr_totals[mfr] for mfr in manufacturers] + [grand_total]
+                for col_idx, v in enumerate(total_vals, 1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=v)
+                    cell.font = total_font
+                    cell.fill = total_fill
+                row_num += 2  # blank separator between codes
+
+            # ── Auto-fit column widths ───────────────────────────────
+            for col in ws.columns:
+                col_letter = get_column_letter(col[0].column)
+                max_len = max((len(str(cell.value)) for cell in col if cell.value), default=8)
+                ws.column_dimensions[col_letter].width = min(max_len + 3, 45)
+
+        # ── Patient Problem E-Codes sheet (per-manufacturer monthly) ──────
+        pat_all_months = pat_mfr_monthly['months']
+        pat_data_by_level = pat_mfr_monthly['data']
+        pat_month_labels = [_fmt_month(m) for m in pat_all_months]
+
+        pat_level_sheet_names = {
+            1: 'Patient Problem E-Codes L1',
+            2: 'Patient Problem E-Codes L2',
+            3: 'Patient Problem E-Codes L3',
+        }
+
+        for level in [1, 2, 3]:
+            ws_pat = wb.create_sheet(title=pat_level_sheet_names[level])
+            level_data = pat_data_by_level.get(level, {})
+            row_num = 1
+
+            for code in sorted(level_data.keys()):
+                mfr_dict = level_data[code]
+                manufacturers = sorted(mfr_dict.keys())
+
+                num_cols = 1 + len(manufacturers) + 1
+                code_cell = ws_pat.cell(row=row_num, column=1, value=f"E-Code: {code}")
+                code_cell.font = code_font
+                code_cell.fill = code_fill
+                for c in range(2, num_cols + 1):
+                    ws_pat.cell(row=row_num, column=c).fill = code_fill
+                row_num += 1
+
+                headers = ['Month'] + manufacturers + ['Total']
+                for col_idx, h in enumerate(headers, 1):
+                    cell = ws_pat.cell(row=row_num, column=col_idx, value=h)
+                    cell.font = hdr_font
+                    cell.fill = hdr_fill
+                    cell.alignment = center
+                row_num += 1
+
+                mfr_totals = {mfr: 0 for mfr in manufacturers}
+                for month_str, month_label in zip(pat_all_months, pat_month_labels):
+                    counts_this_month = [mfr_dict[mfr].get(month_str, 0) for mfr in manufacturers]
+                    row_total = sum(counts_this_month)
+                    if row_total == 0:
+                        continue
+                    ws_pat.cell(row=row_num, column=1, value=month_label)
+                    for col_idx, (mfr, cnt) in enumerate(zip(manufacturers, counts_this_month), 2):
+                        ws_pat.cell(row=row_num, column=col_idx, value=cnt)
+                        mfr_totals[mfr] += cnt
+                    ws_pat.cell(row=row_num, column=len(headers), value=row_total)
+                    row_num += 1
+
+                grand_total = sum(mfr_totals.values())
+                total_vals = ['Total'] + [mfr_totals[mfr] for mfr in manufacturers] + [grand_total]
+                for col_idx, v in enumerate(total_vals, 1):
+                    cell = ws_pat.cell(row=row_num, column=col_idx, value=v)
+                    cell.font = total_font
+                    cell.fill = total_fill
+                row_num += 2
+
+            for col in ws_pat.columns:
+                col_letter = get_column_letter(col[0].column)
+                max_len = max((len(str(cell.value)) for cell in col if cell.value), default=8)
+                ws_pat.column_dimensions[col_letter].width = min(max_len + 3, 45)
 
         output = io.BytesIO()
         wb.save(output)
@@ -855,6 +1075,188 @@ def api_download_code_counts_xlsx():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/imdrf-insights/generate-pdf-report', methods=['POST'])
+@login_required
+def imdrf_insights_generate_pdf():
+    """Generate a PDF trend analysis report for a selected manufacturer and IMDRF code."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request body'}), 400
+
+    file_id      = data.get('file_id', '').strip()
+    hist_file_id = data.get('hist_file_id', '').strip()
+    manufacturer = data.get('manufacturer', '').strip()
+    code_filter  = (data.get('code', 'ALL') or 'ALL').strip()
+    period_from  = data.get('period_from', '')   # "YYYY-MM-DD"
+    period_to    = data.get('period_to', '')
+    grain        = data.get('grain', 'M')
+    level        = int(data.get('level', 1))
+
+    if not file_id or not hist_file_id:
+        return jsonify({'error': 'Missing file_id or hist_file_id'}), 400
+    if not manufacturer:
+        return jsonify({'error': 'Manufacturer is required'}), 400
+    if not period_from or not period_to:
+        return jsonify({'error': 'Period dates are required'}), 400
+
+    # Load file paths from session
+    main_meta = session.get(f'insights_file_{file_id}')
+    hist_meta = session.get(f'insights_file_{hist_file_id}')
+
+    if not main_meta:
+        return jsonify({'error': 'Current period data not found. Please reload your data.'}), 404
+    if not hist_meta:
+        return jsonify({'error': 'Historical data not found. Please try generating the report again.'}), 404
+
+    main_path = main_meta.get('path') if isinstance(main_meta, dict) else main_meta
+    hist_path = hist_meta.get('path') if isinstance(hist_meta, dict) else hist_meta
+
+    if not main_path or not os.path.exists(main_path):
+        return jsonify({'error': 'Current period file not found. Please reload your data.'}), 404
+    if not hist_path or not os.path.exists(hist_path):
+        return jsonify({'error': 'Historical data file not found. Please try again.'}), 404
+
+    try:
+        from backend.imdrf_insights import (
+            prepare_data_for_insights,
+            compute_report_data,
+            render_trend_chart,
+            build_report_pdf,
+        )
+
+        main_result = prepare_data_for_insights(main_path, level=level)
+        hist_result = prepare_data_for_insights(hist_path, level=level)
+
+        df_current = main_result['df_exploded']
+        df_hist    = hist_result['df_exploded']
+        mfr_col    = main_result.get('mfr_col') or '_manufacturer'
+
+        # Ensure manufacturer column exists
+        if mfr_col not in df_current.columns:
+            df_current['_manufacturer'] = 'All Data'
+            mfr_col = '_manufacturer'
+        if mfr_col not in df_hist.columns:
+            df_hist[mfr_col] = 'All Data'
+
+        report_data = compute_report_data(
+            df_current, df_hist, mfr_col, manufacturer,
+            code_filter, period_from, period_to, grain, level
+        )
+
+        if not report_data['trends']:
+            return jsonify({'error': 'No data found for the selected manufacturer and code in the specified period.'}), 400
+
+        # Generate chart images
+        chart_images = []
+        for entry in report_data['trends'].values():
+            buf = render_trend_chart(
+                entry['code'], entry['labels'],
+                entry['mfr_values'], entry['peers_values'],
+                manufacturer, report_data['grain_label']
+            )
+            chart_images.append(buf)
+
+        pdf_bytes = build_report_pdf(report_data, chart_images)
+
+        safe_mfr = re.sub(r'[^A-Za-z0-9_-]', '_', manufacturer)[:30]
+        filename  = f"IMDRF_Report_{safe_mfr}_{period_from}_{period_to}.pdf"
+
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/imdrf-insights/compute-proportions', methods=['POST'])
+@login_required
+def imdrf_insights_compute_proportions():
+    """Compute proportion of a specific IMDRF code across combined historical + current period."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request body'}), 400
+
+    file_id      = data.get('file_id', '').strip()
+    hist_file_id = data.get('hist_file_id', '').strip()
+    code         = data.get('code', '').strip()
+    period_from  = data.get('period_from', '')
+    period_to    = data.get('period_to', '')
+    level        = int(data.get('level', 1))
+
+    if not file_id or not hist_file_id:
+        return jsonify({'error': 'Missing file_id or hist_file_id'}), 400
+    if not code or code.upper() == 'ALL':
+        return jsonify({'error': 'A specific event code is required (not ALL)'}), 400
+    if not period_from or not period_to:
+        return jsonify({'error': 'Period dates are required'}), 400
+
+    main_meta = session.get(f'insights_file_{file_id}')
+    hist_meta = session.get(f'insights_file_{hist_file_id}')
+    if not main_meta:
+        return jsonify({'error': 'Current period data not found. Please reload your data.'}), 404
+    if not hist_meta:
+        return jsonify({'error': 'Historical data not found. Please generate the report first.'}), 404
+
+    main_path = main_meta.get('path') if isinstance(main_meta, dict) else main_meta
+    hist_path = hist_meta.get('path') if isinstance(hist_meta, dict) else hist_meta
+
+    if not main_path or not os.path.exists(main_path):
+        return jsonify({'error': 'Current period file not found. Please reload your data.'}), 404
+    if not hist_path or not os.path.exists(hist_path):
+        return jsonify({'error': 'Historical data file not found. Please try again.'}), 404
+
+    try:
+        from backend.imdrf_insights import prepare_data_for_insights, compute_proportions
+
+        main_result = prepare_data_for_insights(main_path, level=level)
+        hist_result = prepare_data_for_insights(hist_path, level=level)
+
+        result = compute_proportions(
+            main_result['df_exploded'],
+            hist_result['df_exploded'],
+            code, period_from, period_to
+        )
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/imdrf-insights/hist-code-table', methods=['POST'])
+@login_required
+def imdrf_insights_hist_code_table():
+    """Return IMDRF code distribution table for the historical (2-year) dataset."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request body'}), 400
+
+    hist_file_id = data.get('hist_file_id', '').strip()
+    level        = int(data.get('level', 1))
+
+    if not hist_file_id:
+        return jsonify({'error': 'Missing hist_file_id'}), 400
+
+    hist_meta = session.get(f'insights_file_{hist_file_id}')
+    if not hist_meta:
+        return jsonify({'error': 'Historical data not found in session. Please reload.'}), 404
+
+    hist_path = hist_meta.get('path') if isinstance(hist_meta, dict) else hist_meta
+    if not hist_path or not os.path.exists(hist_path):
+        return jsonify({'error': 'Historical data file not found on disk.'}), 404
+
+    try:
+        from backend.imdrf_insights import prepare_data_for_insights, get_hist_code_table
+        hist_result = prepare_data_for_insights(hist_path, level=level)
+        result = get_hist_code_table(hist_result['df_exploded'])
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # MAUDE Bulk Export (openFDA)
@@ -966,14 +1368,39 @@ def _ensure_api_key(url: str, api_key: str) -> str:
     return url
 
 
+_OPENFDA_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (compatible; FDA-MAUDE-Analysis/1.0; +https://open.fda.gov)',
+    'Accept': 'application/json',
+}
+
+
 def _openfda_get(url: str, params: dict = None, max_retries: int = 4, timeout=(5, 30), allow_not_found: bool = False, allow_bad_request: bool = False):
-    """GET with retries on 429/5xx and exponential backoff."""
+    """GET with retries on 429/5xx and exponential backoff.
+
+    If OPENFDA_API_KEY is set, injects it automatically. On API_KEY_INVALID (key not yet
+    working), transparently retries without the key so anonymous calls still succeed.
+    """
+    api_key = os.getenv('OPENFDA_API_KEY', '').strip()
+    # Inject key if available and not already present
+    if api_key and params and 'api_key' not in params:
+        params = {**params, 'api_key': api_key}
+
     for attempt in range(max_retries + 1):
         try:
-            response = requests.get(url, params=params, timeout=timeout)
+            response = requests.get(url, params=params, headers=_OPENFDA_HEADERS, timeout=timeout)
             if response.status_code == 404 and allow_not_found:
                 return response
             if response.status_code == 400 and allow_bad_request:
+                return response
+            if response.status_code == 403:
+                # If the key is invalid, retry once without it so anonymous still works
+                try:
+                    err_code = response.json().get('error', {}).get('code', '')
+                except Exception:
+                    err_code = ''
+                if err_code == 'API_KEY_INVALID' and params and 'api_key' in params:
+                    anon_params = {k: v for k, v in params.items() if k != 'api_key'}
+                    return requests.get(url, params=anon_params, headers=_OPENFDA_HEADERS, timeout=timeout)
                 return response
             if response.status_code in (429, 500, 502, 503, 504):
                 if attempt < max_retries:
@@ -981,6 +1408,7 @@ def _openfda_get(url: str, params: dict = None, max_retries: int = 4, timeout=(5
                     delay = float(retry_after) if retry_after and retry_after.isdigit() else (2 ** attempt)
                     time.sleep(delay)
                     continue
+                return response
             response.raise_for_status()
             return response
         except requests.RequestException:
@@ -988,6 +1416,8 @@ def _openfda_get(url: str, params: dict = None, max_retries: int = 4, timeout=(5
                 time.sleep(2 ** attempt)
                 continue
             raise
+
+
 
 
 def _normalize_to_list(value):
@@ -1070,13 +1500,6 @@ def _maude_probe(product_code, date_from_str, date_to_str):
     limit = 1000
     sort_field = 'date_received'
     sort = f'{sort_field}:asc'
-    probe_fields = 'mdr_report_key'
-    export_fields = ','.join([
-        'report_number', 'mdr_report_key', 'date_received', 'date_report',
-        'date_of_event', 'event_type', 'manufacturer_name', 'device',
-        'mdr_text', 'product_problems', 'device_problem', 'patient_problem_text',
-        'patient', 'number_devices_in_event', 'number_patients_in_event'
-    ])
     search_fields = [
         'device.device_report_product_code',
         'device.product_code',
@@ -1088,20 +1511,26 @@ def _maude_probe(product_code, date_from_str, date_to_str):
     selected_code = None
     selected_date_field = None
     rate_limited = False
+    rate_limit_status = 429  # will hold 403 or 429
 
     # Primary probe: device.device_report_product_code + date_received
     primary_search = (
         f'date_received:[{start_openfda} TO {end_openfda}] AND '
         f'device.device_report_product_code:{_format_openfda_search_value(normalized_code)}'
     )
-    primary_params = {'search': primary_search, 'limit': 1, 'sort': sort, 'fields': probe_fields}
-    if api_key:
-        primary_params['api_key'] = api_key
-    try:
-        primary_resp = _openfda_get(base_url, params=primary_params, allow_not_found=True, allow_bad_request=True)
-        if primary_resp.status_code == 429:
+    def _probe_one(params):
+        """Single probe call — fail fast, no retry."""
+        nonlocal rate_limited, rate_limit_status
+        resp = _openfda_get(base_url, params=params, max_retries=0, allow_not_found=True, allow_bad_request=True)
+        if resp.status_code in (403, 429):
             rate_limited = True
-        elif primary_resp.status_code == 200:
+            rate_limit_status = resp.status_code
+        return resp
+
+    primary_params = {'search': primary_search, 'limit': 1, 'sort': sort}
+    try:
+        primary_resp = _probe_one(primary_params)
+        if primary_resp.status_code == 200:
             primary_data = primary_resp.json()
             if primary_data.get('results'):
                 selected_field = 'device.device_report_product_code'
@@ -1110,20 +1539,20 @@ def _maude_probe(product_code, date_from_str, date_to_str):
     except Exception:
         pass
 
-    if not selected_field:
+    if not selected_field and not rate_limited:
         for date_field in date_fields:
+            if rate_limited:
+                break
             for code_candidate in candidates:
+                if rate_limited:
+                    break
                 search_value = _format_openfda_search_value(code_candidate)
                 for field in search_fields:
                     search = f'{date_field}:[{start_openfda} TO {end_openfda}] AND {field}:{search_value}'
-                    params = {'search': search, 'limit': 1, 'sort': sort, 'fields': probe_fields}
-                    if api_key:
-                        params['api_key'] = api_key
                     try:
-                        response = _openfda_get(base_url, params=params, allow_not_found=True, allow_bad_request=True)
-                        if response.status_code == 429:
-                            rate_limited = True
-                            continue
+                        response = _probe_one({'search': search, 'limit': 1, 'sort': sort})
+                        if rate_limited:
+                            break
                         if response.status_code in (400, 404):
                             continue
                         data_probe = response.json()
@@ -1134,26 +1563,24 @@ def _maude_probe(product_code, date_from_str, date_to_str):
                             break
                     except Exception:
                         continue
-                if selected_field:
+                if selected_field or rate_limited:
                     break
-            if selected_field:
+            if selected_field or rate_limited:
                 break
 
     combined_fields = search_fields
-    if not selected_field:
+    if not selected_field and not rate_limited:
         for date_field in date_fields:
+            if rate_limited:
+                break
             for code_candidate in candidates:
                 search_value = _format_openfda_search_value(code_candidate)
                 combined_query = _build_product_code_query(combined_fields, search_value)
                 search = f'{date_field}:[{start_openfda} TO {end_openfda}] AND {combined_query}'
-                params = {'search': search, 'limit': 1, 'sort': sort, 'fields': probe_fields}
-                if api_key:
-                    params['api_key'] = api_key
                 try:
-                    response = _openfda_get(base_url, params=params, allow_not_found=True, allow_bad_request=True)
-                    if response.status_code == 429:
-                        rate_limited = True
-                        continue
+                    response = _probe_one({'search': search, 'limit': 1, 'sort': sort})
+                    if rate_limited:
+                        break
                     if response.status_code in (400, 404):
                         continue
                     data_probe = response.json()
@@ -1164,84 +1591,26 @@ def _maude_probe(product_code, date_from_str, date_to_str):
                         break
                 except Exception:
                     continue
-            if selected_field:
+            if selected_field or rate_limited:
                 break
 
     if not selected_field and rate_limited:
-        return {
-            'error': 'openFDA rate limit reached. Please try again in a few minutes or set OPENFDA_API_KEY.',
-            'status_code': 429
-        }, None
-
-    date_filtered_search = True
-    if not selected_field:
-        for code_candidate in candidates:
-            search_value = _format_openfda_search_value(code_candidate)
-            for field in search_fields:
-                search = f'{field}:{search_value}'
-                params = {'search': search, 'limit': 1, 'sort': sort, 'fields': probe_fields}
-                if api_key:
-                    params['api_key'] = api_key
-                try:
-                    response = _openfda_get(base_url, params=params, allow_not_found=True, allow_bad_request=True)
-                    if response.status_code in (400, 404):
-                        continue
-                    data_probe = response.json()
-                    if data_probe.get('results'):
-                        selected_field = field
-                        selected_code = code_candidate
-                        date_filtered_search = False
-                        break
-                except Exception:
-                    continue
-            if selected_field:
-                break
-
-    # Last-resort probe without fields/sort
-    if not selected_field:
-        for code_candidate in candidates:
-            search_value = _format_openfda_search_value(code_candidate)
-            search = f'device.device_report_product_code:{search_value}'
-            try:
-                response = _openfda_get(base_url, params={'search': search, 'limit': 1},
-                                        allow_not_found=True, allow_bad_request=True)
-                if response.status_code == 200:
-                    data_probe = response.json()
-                    if data_probe.get('results'):
-                        selected_field = 'device.device_report_product_code'
-                        selected_code = code_candidate
-                        date_filtered_search = False
-                        break
-            except Exception:
-                continue
+        if rate_limit_status == 403:
+            msg = 'openFDA returned 403 Forbidden. The API key may not be activated yet or the IP is blocked. Please verify the API key at open.fda.gov.'
+        else:
+            msg = 'openFDA is rate-limiting this server (429). Please wait a minute and try again.'
+        return {'error': msg, 'status_code': rate_limit_status}, None
 
     if not selected_field:
         return {
             'error': (
-                'No matching records found for the provided product code and date range. '
-                'Please confirm the FDA 3-character product code and date range, then try again.'
+                f'No MAUDE events found for {product_code} between {date_from_str} and {date_to_str}. '
+                'Please confirm the product code and date range, then try again.'
             ),
             'status_code': 404
         }, None
 
-    # Re-probe with date filter if the fallback found a field without one
-    if not date_filtered_search and selected_field and selected_code:
-        _sv = _format_openfda_search_value(selected_code)
-        _pq = _build_product_code_query(selected_field, _sv)
-        for _df in date_fields:
-            _dt_search = f'{_df}:[{start_openfda} TO {end_openfda}] AND {_pq}'
-            _dt_params = {'search': _dt_search, 'limit': 1}
-            if api_key:
-                _dt_params['api_key'] = api_key
-            try:
-                _dt_resp = _openfda_get(base_url, params=_dt_params,
-                                        allow_not_found=True, allow_bad_request=True)
-                if _dt_resp.status_code == 200 and _dt_resp.json().get('results'):
-                    date_filtered_search = True
-                    selected_date_field = _df
-                    break
-            except Exception:
-                pass
+    date_filtered_search = True
 
     if not selected_code:
         selected_code = normalized_code
@@ -1255,18 +1624,29 @@ def _maude_probe(product_code, date_from_str, date_to_str):
         search = f'{selected_date_field}:[{start_openfda} TO {end_openfda}] AND {product_query}'
     else:
         search = product_query
-    params = {'search': search, 'limit': limit, 'sort': sort, 'fields': export_fields}
-    if api_key:
-        params['api_key'] = api_key
+    fetch_params = {'search': search, 'limit': limit, 'sort': sort}
 
     try:
-        first_response = _openfda_get(base_url, params=params, allow_not_found=True, allow_bad_request=True)
+        first_response = _openfda_get(base_url, params=fetch_params, allow_not_found=True, allow_bad_request=True)
         if first_response.status_code == 400:
-            fallback_params = {'search': search, 'limit': limit}
-            if api_key:
-                fallback_params['api_key'] = api_key
-            first_response = _openfda_get(base_url, params=fallback_params,
-                                          allow_not_found=True, allow_bad_request=True)
+            # Retry without sort in case sort field is unsupported
+            first_response = _openfda_get(base_url, params={'search': search, 'limit': limit}, allow_not_found=True, allow_bad_request=True)
+        if first_response.status_code == 403:
+            try:
+                err_code = first_response.json().get('error', {}).get('code', '')
+            except Exception:
+                err_code = ''
+            if err_code == 'API_KEY_MISSING':
+                msg = ('openFDA requires an API key for this query (too many results without a date filter). '
+                       'Register a free key at open.fda.gov/apis/authentication/ and add it to your .env as OPENFDA_API_KEY.')
+            else:
+                msg = 'openFDA returned 403 Forbidden. The API key may not be activated yet or the IP is blocked. Please verify the API key at open.fda.gov.'
+            return {'error': msg, 'status_code': 403}, None
+        if first_response.status_code == 429:
+            return {
+                'error': 'openFDA is rate-limiting this server (429). Please wait a minute and try again.',
+                'status_code': 429
+            }, None
         if first_response.status_code == 400:
             return {
                 'error': 'openFDA rejected the query. Please verify the product code and date range and try again.',
@@ -1294,8 +1674,6 @@ def _maude_probe(product_code, date_from_str, date_to_str):
         }, None
 
     next_url = _parse_next_link(first_response.headers.get('Link'))
-    if next_url:
-        next_url = _ensure_api_key(next_url, api_key)
 
     if not date_filtered_search:
         total_results = None
@@ -1313,18 +1691,70 @@ def _maude_probe(product_code, date_from_str, date_to_str):
         'search': search,
         'sort': sort,
         'limit': limit,
-        'export_fields': export_fields,
-        'api_key': api_key,
         'start_date': start_date,
         'end_date': end_date,
         'selected_date_field': selected_date_field,
         'selected_code': selected_code,
+        'product_query': product_query,  # stored for year-by-year re-fetching
         'base_url': base_url,
         'columns': columns,
         'total_results': total_results,
         'product_code': product_code,
         'date_from': date_from_str,
         'date_to': date_to_str,
+    }
+
+
+def _make_year_probe(base_probe, year_start_str, year_end_str):
+    """Build a year-scoped probe reusing already-detected fields from base_probe.
+
+    Returns a probe dict ready for _maude_generate_csv, or None if no data for that year.
+    """
+    try:
+        start_date = datetime.strptime(year_start_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(year_end_str, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+    start_openfda = start_date.strftime('%Y%m%d')
+    end_openfda = end_date.strftime('%Y%m%d')
+
+    selected_date_field = base_probe['selected_date_field']
+    product_query = base_probe['product_query']
+    base_url = base_probe['base_url']
+    limit = base_probe['limit']
+    sort = base_probe['sort']
+
+    search = f'{selected_date_field}:[{start_openfda} TO {end_openfda}] AND {product_query}'
+    fetch_params = {'search': search, 'limit': limit, 'sort': sort}
+
+    try:
+        response = _openfda_get(base_url, params=fetch_params, allow_not_found=True, allow_bad_request=True)
+        if response.status_code in (404, 400):
+            return None
+        payload = response.json()
+        first_results = payload.get('results', [])
+        if not first_results:
+            return None
+        total = payload.get('meta', {}).get('results', {}).get('total')
+        next_url = _parse_next_link(response.headers.get('Link'))
+    except Exception:
+        return None
+
+    return {
+        'first_results': first_results,
+        'next_url': next_url,
+        'search': search,
+        'sort': sort,
+        'limit': limit,
+        'start_date': start_date,
+        'end_date': end_date,
+        'selected_date_field': selected_date_field,
+        'selected_code': base_probe['selected_code'],
+        'product_query': product_query,
+        'base_url': base_url,
+        'columns': base_probe['columns'],
+        'total_results': total,
     }
 
 
@@ -1411,8 +1841,6 @@ def _maude_generate_csv(probe, progress_callback=None):
     search = probe['search']
     sort = probe['sort']
     limit = probe['limit']
-    export_fields = probe['export_fields']
-    api_key = probe['api_key']
     start_date = probe['start_date']
     end_date = probe['end_date']
     selected_date_field = probe['selected_date_field']
@@ -1475,10 +1903,7 @@ def _maude_generate_csv(probe, progress_callback=None):
                         'limit': limit,
                         'sort': sort,
                         'skip': skip_val,
-                        'fields': export_fields
                     }
-                    if api_key:
-                        skip_params['api_key'] = api_key
                     current_next = requests.Request('GET', base_url, params=skip_params).prepare().url
                 else:
                     break
@@ -1501,8 +1926,6 @@ def _maude_generate_csv(probe, progress_callback=None):
         pages_fetched += 1
         last_next = current_next
         current_next = _parse_next_link(response.headers.get('Link'))
-        if current_next:
-            current_next = _ensure_api_key(current_next, api_key)
 
 
 @app.route('/api/maude/export', methods=['POST'])
@@ -1785,16 +2208,29 @@ def api_pipeline_start():
     product_code = (data.get('product_code') or '').strip().upper()
     date_from = (data.get('date_from') or '').strip()
     date_to = (data.get('date_to') or '').strip()
-    pipeline_type = (data.get('pipeline_type') or 'full').strip().lower()
+
+    # Multi-output support: requested_outputs list takes precedence over pipeline_type
+    _valid_types = {'raw', 'clean', 'full'}
+    _req_raw = data.get('requested_outputs') or []
+    if not isinstance(_req_raw, list):
+        _req_raw = []
+    requested_outputs = [o for o in _req_raw if o in _valid_types]
+
+    if requested_outputs:
+        if 'full' in requested_outputs:
+            pipeline_type = 'full'
+        elif 'clean' in requested_outputs:
+            pipeline_type = 'clean'
+        else:
+            pipeline_type = 'raw'
+    else:
+        pipeline_type = (data.get('pipeline_type') or 'full').strip().lower()
+        if pipeline_type not in _valid_types:
+            return jsonify({'error': 'Invalid pipeline_type. Must be raw, clean, or full.'}), 400
+        requested_outputs = [pipeline_type]
 
     if not product_code:
         return jsonify({'error': 'Product code is required.'}), 400
-    if pipeline_type not in ('raw', 'clean', 'full'):
-        return jsonify({'error': 'Invalid pipeline_type. Must be raw, clean, or full.'}), 400
-
-    err, probe = _maude_probe(product_code, date_from, date_to)
-    if err:
-        return jsonify({'error': err['error']}), err['status_code']
 
     job_id = str(uuid.uuid4())
     user_id = current_user.id
@@ -1812,10 +2248,12 @@ def api_pipeline_start():
 
     _set_pipeline_status(
         job_id,
-        status='queued', step=0, step_name='Starting…',
+        status='queued', step=0, step_name='Connecting to openFDA…',
         total_steps=total_steps, pipeline_type=pipeline_type,
-        processed=0, scanned=0, total=probe.get('total_results'),
+        processed=0, scanned=0, total=None,
         error=None, output_path=None, output_filename=output_filename,
+        requested_outputs=requested_outputs,
+        product_code=product_code, date_from=date_from, date_to=date_to,
         user_id=user_id
     )
 
@@ -1826,6 +2264,15 @@ def api_pipeline_start():
         final_path = os.path.join(app.config['UPLOAD_FOLDER'], f"pipeline_final_{job_id}.{ext}")
 
         try:
+            # Step 0: Probe openFDA to find correct search field/date combination
+            _set_pipeline_status(job_id, status='running', step=0,
+                                 step_name='Connecting to openFDA…', user_id=job_user_id)
+            err, probe = _maude_probe(product_code, date_from, date_to)
+            if err:
+                _set_pipeline_status(job_id, status='failed', error=err['error'], user_id=job_user_id)
+                return
+            _set_pipeline_status(job_id, total=probe.get('total_results'), user_id=job_user_id)
+
             # Step 1: Download raw MAUDE CSV
             _set_pipeline_status(job_id, status='running', step=1,
                                  step_name='Downloading MAUDE data…', user_id=job_user_id)
@@ -1835,9 +2282,41 @@ def api_pipeline_start():
                                      user_id=job_user_id)
 
             step1_dest = final_path if pipeline_type == 'raw' else raw_path
+
+            # For multi-year ranges, fetch each year separately to avoid the
+            # openFDA max-skip=25000 cap (which caps total records at ~26,000
+            # and, with asc sorting, would return only the earliest year's data).
+            try:
+                year_from_int = datetime.strptime(date_from, '%Y-%m-%d').year
+                year_to_int   = datetime.strptime(date_to,   '%Y-%m-%d').year
+            except ValueError:
+                year_from_int = year_to_int = None
+
             with open(step1_dest, 'wb') as f:
-                for chunk in _maude_generate_csv(probe, progress_callback=dl_progress):
-                    f.write(chunk)
+                if year_from_int and year_to_int and year_to_int > year_from_int:
+                    # Multi-year: fetch each calendar year independently
+                    header_written = False
+                    for yr in range(year_from_int, year_to_int + 1):
+                        y_start = f"{yr}-01-01"
+                        y_end   = f"{yr}-12-31"
+                        year_probe = _make_year_probe(probe, y_start, y_end)
+                        if year_probe is None:
+                            continue  # no data for this year — skip
+                        for chunk_idx, chunk in enumerate(_maude_generate_csv(year_probe)):
+                            if chunk_idx == 0 and header_written:
+                                # Skip the CSV header row for all years after the first
+                                continue
+                            f.write(chunk)
+                            if chunk_idx == 0:
+                                header_written = True
+                else:
+                    # Single year (or unknown range): use original probe directly
+                    for chunk in _maude_generate_csv(probe, progress_callback=dl_progress):
+                        f.write(chunk)
+
+            # Keep raw file as a secondary output if it was explicitly requested
+            if pipeline_type != 'raw' and 'raw' in requested_outputs:
+                _set_pipeline_status(job_id, raw_output_path=raw_path, user_id=job_user_id)
 
             if pipeline_type == 'raw':
                 _set_pipeline_status(
@@ -1849,7 +2328,7 @@ def api_pipeline_start():
                         'date_from': date_from,
                         'date_to': date_to,
                         'pipeline_type': pipeline_type,
-                        'run_at': datetime.utcnow().isoformat(),
+                        'run_at': datetime.now(timezone.utc).isoformat(),
                         'total_records_found': probe.get('total_results'),
                         'raw_records_downloaded': probe.get('total_results'),
                     },
@@ -1864,10 +2343,11 @@ def api_pipeline_start():
             if os.path.exists(DEFAULT_IMDRF_PATH):
                 processor.load_imdrf_structure(DEFAULT_IMDRF_PATH)
             stats = processor.process_file(raw_path, cleaned_path)
-            try:
-                os.remove(raw_path)
-            except Exception:
-                pass
+            if 'raw' not in requested_outputs:
+                try:
+                    os.remove(raw_path)
+                except Exception:
+                    pass
 
             critical_failures = []
             if not stats['validation'].get('column_count_correct', False):
@@ -1898,7 +2378,7 @@ def api_pipeline_start():
                         'date_from': date_from,
                         'date_to': date_to,
                         'pipeline_type': pipeline_type,
-                        'run_at': datetime.utcnow().isoformat(),
+                        'run_at': datetime.now(timezone.utc).isoformat(),
                         'total_records_found': probe.get('total_results'),
                         'raw_records_downloaded': probe.get('total_results'),
                         'stats': {
@@ -1923,7 +2403,8 @@ def api_pipeline_start():
             from backend.imdrf_insights import (  # lazy import
                 _load_cleaned_dataframe,
                 get_imdrf_code_counts_all_levels_with_descriptions,
-                get_patient_problem_counts,
+                get_imdrf_code_monthly_counts,
+                get_patient_problem_e_code_monthly_counts,
                 load_imdrf_code_descriptions,
                 EXCLUDED_IMDRF_L1_PREFIXES,
             )
@@ -1933,7 +2414,9 @@ def api_pipeline_start():
             cleaned_df = _load_cleaned_dataframe(cleaned_path)
             counts_by_level = get_imdrf_code_counts_all_levels_with_descriptions(
                 cleaned_path, DEFAULT_IMDRF_PATH, df=cleaned_df)
-            patient_problem_counts = get_patient_problem_counts(cleaned_path, df=cleaned_df)
+            monthly_data = get_imdrf_code_monthly_counts(cleaned_path, df=cleaned_df)
+            patient_e_monthly = get_patient_problem_e_code_monthly_counts(
+                cleaned_path, DEFAULT_IMDRF_PATH, df=cleaned_df)
 
             # ── Audit: per-level code count summary ──────────────────────────
             level_summary = {}
@@ -1969,35 +2452,82 @@ def api_pipeline_start():
             except Exception:
                 pass
 
-            try:
-                os.remove(cleaned_path)
-            except Exception:
-                pass
+            if 'clean' in requested_outputs:
+                _set_pipeline_status(job_id, clean_output_path=cleaned_path, user_id=job_user_id)
+            else:
+                try:
+                    os.remove(cleaned_path)
+                except Exception:
+                    pass
 
             wb = Workbook()
             ws = wb.active
             ws.title = "IMDRF Code Counts"
             bold_font = Font(bold=True)
 
+            all_months = monthly_data.get('months', [])
+            monthly_counts = monthly_data.get('counts', {})
+            num_months = len(all_months)
+
+            # Format 'YYYY-MM' → 'MMM-YYYY' for column headers
+            def _fmt_month(ym):
+                try:
+                    import calendar
+                    y, m = ym.split('-')
+                    return f"{calendar.month_abbr[int(m)]}-{y}"
+                except Exception:
+                    return ym
+
+            month_headers = [_fmt_month(m) for m in all_months]
+
             for level in [1, 2, 3]:
                 level_label = f"LEVEL-{level} Code"
-                ws.append([level_label, "", ""])
+                ws.append([level_label] + [""] * (3 + num_months))
                 ws.cell(row=ws.max_row, column=1).font = bold_font
-                ws.append(["IMDRF Code", "Description", "Count"])
-                ws.cell(row=ws.max_row, column=1).font = bold_font
-                ws.cell(row=ws.max_row, column=2).font = bold_font
-                ws.cell(row=ws.max_row, column=3).font = bold_font
+
+                header_row = ["IMDRF Code", "Description", "Total", "Avg/Month"] + month_headers
+                ws.append(header_row)
+                for col_idx in range(1, len(header_row) + 1):
+                    ws.cell(row=ws.max_row, column=col_idx).font = bold_font
+
                 level_counts = counts_by_level.get(level, {})
+                level_monthly = monthly_counts.get(level, {})
                 for code in sorted(level_counts.keys(), key=str):
                     row_data = level_counts.get(code, {})
-                    ws.append([str(code), row_data.get('description', ''), row_data.get('count', 0)])
-                ws.append(["", ""])
+                    total = row_data.get('count', 0)
+                    avg = round(total / num_months, 2) if num_months > 0 else 0
+                    code_monthly = level_monthly.get(str(code), {})
+                    month_vals = [code_monthly.get(m, 0) for m in all_months]
+                    ws.append([str(code), row_data.get('description', ''), total, avg] + month_vals)
+                ws.append([""] * (4 + num_months))
 
-            ws.append(["Patient Problem", "Count", ""])
-            ws.cell(row=ws.max_row, column=1).font = bold_font
-            ws.cell(row=ws.max_row, column=2).font = bold_font
-            for problem in sorted(patient_problem_counts.keys(), key=str):
-                ws.append([str(problem), patient_problem_counts.get(problem, 0), ""])
+            # ── Patient Problem E-code sections (L1 / L2 / L3) ──────────────
+            pat_months = patient_e_monthly.get('months', [])
+            pat_monthly_counts = patient_e_monthly.get('counts', {})
+            pat_totals = patient_e_monthly.get('totals', {})
+            num_pat_months = len(pat_months)
+            pat_month_headers = [_fmt_month(m) for m in pat_months]
+
+            for level in [1, 2, 3]:
+                level_label = f"PATIENT PROBLEM E-CODES LEVEL-{level}"
+                ws.append([level_label] + [""] * (3 + num_pat_months))
+                ws.cell(row=ws.max_row, column=1).font = bold_font
+
+                header_row = ["IMDRF E-Code", "Description", "Total", "Avg/Month"] + pat_month_headers
+                ws.append(header_row)
+                for col_idx in range(1, len(header_row) + 1):
+                    ws.cell(row=ws.max_row, column=col_idx).font = bold_font
+
+                level_totals = pat_totals.get(level, {})
+                level_monthly = pat_monthly_counts.get(level, {})
+                for code in sorted(level_totals.keys(), key=str):
+                    row_data = level_totals[code]
+                    total = row_data.get('count', 0)
+                    avg = round(total / num_pat_months, 2) if num_pat_months > 0 else 0
+                    code_monthly = level_monthly.get(str(code), {})
+                    month_vals = [code_monthly.get(m, 0) for m in pat_months]
+                    ws.append([str(code), row_data.get('description', ''), total, avg] + month_vals)
+                ws.append([""] * (4 + num_pat_months))
 
             wb.save(final_path)
             _set_pipeline_status(
@@ -2009,7 +2539,7 @@ def api_pipeline_start():
                     'date_from': date_from,
                     'date_to': date_to,
                     'pipeline_type': pipeline_type,
-                    'run_at': datetime.utcnow().isoformat(),
+                    'run_at': datetime.now(timezone.utc).isoformat(),
                     'total_records_found': probe.get('total_results'),
                     'raw_records_downloaded': probe.get('total_results'),
                     'stats': {
@@ -2033,8 +2563,9 @@ def api_pipeline_start():
         except Exception as e:
             _set_pipeline_status(job_id, status='failed', error=str(e), user_id=job_user_id)
         finally:
-            for p in [raw_path, cleaned_path]:
-                if os.path.exists(p):
+            # Only clean up intermediate files that were NOT explicitly requested as outputs
+            for p, ftype in [(raw_path, 'raw'), (cleaned_path, 'clean')]:
+                if ftype not in requested_outputs and os.path.exists(p):
                     try:
                         os.remove(p)
                     except Exception:
@@ -2108,6 +2639,66 @@ def api_pipeline_audit(job_id):
     output = io.BytesIO(report_text.encode('utf-8'))
     output.seek(0)
     return send_file(output, mimetype='text/plain', as_attachment=True, download_name=filename)
+
+
+@app.route('/api/pipeline/download-file/<job_id>/<file_type>', methods=['GET'])
+@login_required
+def api_pipeline_download_file(job_id, file_type):
+    """Download a specific output file (raw/clean/full) from a completed pipeline job."""
+    if file_type not in ('raw', 'clean', 'full'):
+        return jsonify({'error': 'Invalid file type. Must be raw, clean, or full.'}), 400
+    job = _get_pipeline_job(job_id)
+    if not job or job.get('user_id') != current_user.id:
+        return jsonify({'error': 'Job not found'}), 404
+    if job.get('status') != 'done':
+        return jsonify({'error': 'Job not complete yet'}), 409
+
+    safe_code = re.sub(r'[^A-Za-z0-9_-]+', '', (job.get('product_code') or 'CODE').upper()) or 'CODE'
+    date_from = job.get('date_from', '')
+    date_to = job.get('date_to', '')
+
+    upload_folder = app.config['UPLOAD_FOLDER']
+
+    if file_type == 'raw':
+        # Stored path → fallback to expected temp filename for this job
+        path = job.get('raw_output_path')
+        if not path or not os.path.exists(path):
+            path = job.get('output_path') if job.get('pipeline_type') == 'raw' else None
+        if not path or not os.path.exists(path):
+            path = os.path.join(upload_folder, f"pipeline_raw_{job_id}.csv")
+        filename = f"maude_{safe_code}_{date_from}_{date_to}.csv"
+        mimetype = 'text/csv'
+    elif file_type == 'clean':
+        path = job.get('clean_output_path')
+        if not path or not os.path.exists(path):
+            path = job.get('output_path') if job.get('pipeline_type') == 'clean' else None
+        if not path or not os.path.exists(path):
+            path = os.path.join(upload_folder, f"pipeline_cleaned_{job_id}.xlsx")
+        filename = f"maude_{safe_code}_{date_from}_{date_to}_cleaned.xlsx"
+        mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    else:  # full
+        path = job.get('output_path') if job.get('pipeline_type') == 'full' else None
+        if not path or not os.path.exists(path):
+            path = os.path.join(upload_folder, f"pipeline_final_{job_id}.xlsx")
+        filename = job.get('output_filename', f"imdrf_code_counts_{safe_code}_{date_from}_{date_to}.xlsx")
+        mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+    if not path or not os.path.exists(path):
+        requested = job.get('requested_outputs', [])
+        return jsonify({
+            'error': f'"{file_type}" file was not produced by this job. '
+                     f'Pipeline type was "{job.get("pipeline_type")}", '
+                     f'requested outputs were {requested}.'
+        }), 404
+    return send_file(path, as_attachment=True, download_name=filename, mimetype=mimetype)
+
+
+# Device Recall Routes
+@app.route('/device-recall')
+@login_required
+def device_recall_page():
+    """Render Device Recall Search page."""
+    return render_template('device_recall.html', user=current_user)
 
 
 # TXT to CSV Converter Routes

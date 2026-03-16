@@ -24,4 +24,6 @@ services:
         sync: false
       - key: FIREBASE_APP_ID
         sync: false
+      - key: OPENFDA_API_KEY
+        sync: false
     healthCheckPath: /health

@@ -480,6 +480,75 @@
             box-shadow: 0 6px 20px rgba(71,85,105,0.5);
         }
 
+        /* ── Output option selectable cards ──────────────────────── */
+        .output-option-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+        @media (max-width: 680px) {
+            .output-option-grid { grid-template-columns: 1fr; }
+        }
+        .output-option {
+            padding: 14px 10px;
+            color: white;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            position: relative;
+            overflow: hidden;
+            min-height: 80px;
+            opacity: 0.48;
+            user-select: none;
+        }
+        .output-option.selected {
+            opacity: 1;
+            border-color: rgba(255, 255, 255, 0.65);
+        }
+        .output-option:not(.pipeline-disabled):hover { transform: translateY(-2px); }
+        .output-option.pipeline-disabled { pointer-events: none; opacity: 0.28 !important; }
+        .output-option .btn-icon { font-size: 1.3rem; }
+        .output-option .btn-label { font-size: 0.82rem; font-weight: 500; opacity: 0.9; }
+        .output-option .opt-check {
+            position: absolute;
+            top: 8px; right: 8px;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            background: transparent;
+            transition: all 0.2s;
+        }
+        .output-option.selected .opt-check {
+            background: white;
+            border-color: white;
+            color: #1e293b;
+        }
+        .output-option-raw   { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 4px 14px rgba(37,99,235,0.35); }
+        .output-option-clean { background: linear-gradient(135deg, #059669 0%, #047857 100%); box-shadow: 0 4px 14px rgba(5,150,105,0.35); }
+        .output-option-full  { background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); box-shadow: 0 4px 14px rgba(124,58,237,0.35); }
+        .output-option-raw.selected   { box-shadow: 0 6px 20px rgba(37,99,235,0.55); }
+        .output-option-clean.selected { box-shadow: 0 6px 20px rgba(5,150,105,0.55); }
+        .output-option-full.selected  { box-shadow: 0 6px 20px rgba(124,58,237,0.55); }
+        .pipeline-btn-start {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            box-shadow: 0 4px 14px rgba(15,23,42,0.4);
+            width: 100%;
+        }
+        .pipeline-btn-start:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(15,23,42,0.6); }
+
         /* ── Pipeline steps timeline ──────────────────────────────── */
         .pipeline-steps-row {
             display: none;
@@ -739,6 +808,10 @@
                     <i class="fas fa-chart-line"></i>
                     <span>IMDRF Insights</span>
                 </a>
+                <a href="/device-recall" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <span>Device Recall</span>
+                </a>
                 <a href="/txt-to-csv" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-exchange-alt"></i>
                     <span>TXT to CSV</span>
@@ -829,22 +902,34 @@
                 </div>
             </div>
 
-            <!-- Three pipeline buttons -->
-            <div class="pipeline-btns-grid">
-                <button class="pipeline-btn pipeline-btn-raw" id="pipelineBtnRaw" data-type="raw">
+            <!-- Selectable output options (click to toggle) -->
+            <div class="output-option-grid" id="outputOptionGrid">
+                <div class="output-option output-option-raw selected" data-type="raw" id="optRaw">
                     <i class="fas fa-file-csv btn-icon"></i>
-                    <span>Download Raw MAUDE</span>
+                    <span>Raw MAUDE Data</span>
                     <span class="btn-label">CSV · openFDA data as-is</span>
-                </button>
-                <button class="pipeline-btn pipeline-btn-clean" id="pipelineBtnClean" data-type="clean">
+                    <div class="opt-check"><i class="fas fa-check"></i></div>
+                </div>
+                <div class="output-option output-option-clean selected" data-type="clean" id="optClean">
                     <i class="fas fa-file-excel btn-icon"></i>
-                    <span>Download Cleaned File</span>
+                    <span>Cleaned File</span>
                     <span class="btn-label">XLSX · fetched + processed</span>
-                </button>
-                <button class="pipeline-btn pipeline-btn-full" id="pipelineBtnFull" data-type="full">
+                    <div class="opt-check"><i class="fas fa-check"></i></div>
+                </div>
+                <div class="output-option output-option-full selected" data-type="full" id="optFull">
                     <i class="fas fa-chart-bar btn-icon"></i>
-                    <span>Download Code Counts</span>
+                    <span>Code Counts</span>
                     <span class="btn-label">XLSX · IMDRF analysis report</span>
+                    <div class="opt-check"><i class="fas fa-check"></i></div>
+                </div>
+            </div>
+
+            <!-- Single start button -->
+            <div style="margin-bottom: 20px;">
+                <button class="pipeline-btn pipeline-btn-start" id="pipelineBtnStart">
+                    <i class="fas fa-download btn-icon"></i>
+                    <span>Start Download</span>
+                    <span class="btn-label">Fetches data once · delivers all selected files</span>
                 </button>
             </div>
 
@@ -913,8 +998,9 @@
     </div><!-- /.container -->
 
     <script>
-        // ── Pipeline Download (three buttons) ────────────────────────
-        const pipelineBtns       = document.querySelectorAll('.pipeline-btn:not(.pipeline-btn-audit)');
+        // ── Pipeline Download ─────────────────────────────────────────
+        const pipelineBtnStart   = document.getElementById('pipelineBtnStart');
+        const outputOptions      = document.querySelectorAll('.output-option');
         const pipelineBtnAudit   = document.getElementById('pipelineBtnAudit');
         const bulkDownloadStatus = document.getElementById('bulkDownloadStatus');
         let _currentJobId   = null;
@@ -969,8 +1055,8 @@
         }
 
         function setAllBtnsDisabled(disabled) {
-            pipelineBtns.forEach(b => b.disabled = disabled);
-            // Audit button: disable while pipeline is running; after that restore to job state
+            pipelineBtnStart.disabled = disabled;
+            outputOptions.forEach(opt => opt.classList.toggle('pipeline-disabled', disabled));
             if (disabled) {
                 pipelineBtnAudit.disabled = true;
             } else {
@@ -1042,7 +1128,19 @@
                    (scanned > processed ? ` (${scanned.toLocaleString()} scanned)` : '');
         }
 
-        async function startPipelineDownload(pipelineType) {
+        // ── Output option toggle logic ────────────────────────────────
+        outputOptions.forEach(opt => {
+            opt.addEventListener('click', () => {
+                if (opt.classList.contains('selected')) {
+                    const selectedCount = document.querySelectorAll('.output-option.selected').length;
+                    if (selectedCount > 1) opt.classList.remove('selected');
+                } else {
+                    opt.classList.add('selected');
+                }
+            });
+        });
+
+        async function startPipelineDownload(requestedOutputs) {
             const productCode = document.getElementById('bulkProductCode').value.trim().toUpperCase();
             const fromDate    = document.getElementById('bulkDateFrom').value;
             const toDate      = document.getElementById('bulkDateTo').value;
@@ -1053,6 +1151,10 @@
                     'Please fill in Product Code, Date From, and Date To.', 'error');
                 return;
             }
+
+            // Highest pipeline type needed
+            const pipelineType = requestedOutputs.includes('full') ? 'full'
+                               : requestedOutputs.includes('clean') ? 'clean' : 'raw';
 
             _currentJobId    = null;
             _currentAuditUrl = null;
@@ -1071,7 +1173,8 @@
                         product_code: productCode,
                         date_from: fromDate,
                         date_to: toDate,
-                        pipeline_type: pipelineType
+                        pipeline_type: pipelineType,
+                        requested_outputs: requestedOutputs
                     })
                 });
 
@@ -1081,17 +1184,16 @@
                 }
 
                 const payload = await startResp.json();
-                const statusUrl   = payload.status_url;
-                const downloadUrl = payload.download_url;
-                const auditUrl    = payload.audit_url;
-                _currentAuditUrl  = auditUrl;
+                const statusUrl  = payload.status_url;
+                const auditUrl   = payload.audit_url;
+                _currentAuditUrl = auditUrl;
 
                 showBulkStatus('<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Fetching data from openFDA…', 'info');
                 setBulkProgress(Math.max(_bulkDisplayPct, 8), true);
                 startHeartbeat(33);
 
                 let attempts = 0;
-                const maxAttempts  = 600;  // 12-minute max
+                const maxAttempts  = 600;
                 const pollInterval = 1200;
                 let lastStep = 0;
 
@@ -1138,43 +1240,56 @@
 
                         if (s.status === 'done') {
                             stopHeartbeat();
-                            updateStepTimeline(pipelineType, totalSteps + 1); // mark all done
+                            updateStepTimeline(pipelineType, totalSteps + 1);
                             setBulkProgress(98, true);
-                            showBulkStatus(
-                                '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Preparing file for download…',
-                                'info');
 
-                            const fileResp = await fetch(downloadUrl);
-                            if (!fileResp.ok) throw new Error('Could not retrieve the output file.');
-                            const blob   = await fileResp.blob();
-                            const objUrl = window.URL.createObjectURL(blob);
-                            const link   = document.createElement('a');
-                            link.href    = objUrl;
+                            // Download each requested file type sequentially
+                            const typeLabels = { raw: 'Raw MAUDE CSV', clean: 'Cleaned MAUDE XLSX', full: 'IMDRF Code Counts XLSX' };
+                            for (let i = 0; i < requestedOutputs.length; i++) {
+                                const type = requestedOutputs[i];
+                                showBulkStatus(
+                                    `<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>` +
+                                    `Preparing file ${i + 1} of ${requestedOutputs.length}: ${typeLabels[type]}…`,
+                                    'info');
 
-                            const cd = fileResp.headers.get('Content-Disposition') || '';
-                            const fnMatch = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-                            link.download = fnMatch
-                                ? fnMatch[1].replace(/['"]/g, '')
-                                : (pipelineType === 'raw'
-                                    ? `maude_${productCode}_${fromDate}_${toDate}.csv`
-                                    : pipelineType === 'clean'
-                                    ? `cleaned_maude_${productCode}_${fromDate}_${toDate}.xlsx`
-                                    : `imdrf_code_counts_${productCode}_${fromDate}_${toDate}.xlsx`);
+                                const dlUrl = `/api/pipeline/download-file/${payload.job_id}/${type}`;
+                                const fileResp = await fetch(dlUrl);
+                                if (!fileResp.ok) {
+                                    const errBody = await fileResp.json().catch(() => ({}));
+                                    throw new Error(errBody.error || `Could not retrieve ${typeLabels[type]} (HTTP ${fileResp.status}).`);
+                                }
 
-                            document.body.appendChild(link);
-                            link.click();
-                            link.remove();
-                            window.URL.revokeObjectURL(objUrl);
+                                const blob   = await fileResp.blob();
+                                const objUrl = window.URL.createObjectURL(blob);
+                                const link   = document.createElement('a');
+                                link.href    = objUrl;
+
+                                const cd = fileResp.headers.get('Content-Disposition') || '';
+                                const fnMatch = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                                link.download = fnMatch
+                                    ? fnMatch[1].replace(/['"]/g, '')
+                                    : (type === 'raw'
+                                        ? `maude_${productCode}_${fromDate}_${toDate}.csv`
+                                        : type === 'clean'
+                                        ? `maude_${productCode}_${fromDate}_${toDate}_cleaned.xlsx`
+                                        : `imdrf_code_counts_${productCode}_${fromDate}_${toDate}.xlsx`);
+
+                                document.body.appendChild(link);
+                                link.click();
+                                link.remove();
+                                window.URL.revokeObjectURL(objUrl);
+
+                                if (i < requestedOutputs.length - 1) {
+                                    await new Promise(r => setTimeout(r, 600));
+                                }
+                            }
 
                             setBulkProgress(100, false);
-                            const typeLabel = pipelineType === 'raw' ? 'Raw MAUDE CSV'
-                                           : pipelineType === 'clean' ? 'Cleaned MAUDE XLSX'
-                                           : 'IMDRF Code Counts XLSX';
+                            const fileWord = requestedOutputs.length === 1 ? 'file' : 'files';
                             showBulkStatus(
                                 `<i class="fas fa-check-circle" style="margin-right:8px;color:#10b981;"></i>` +
-                                `<strong>${typeLabel}</strong> downloaded successfully!`,
+                                `<strong>${requestedOutputs.length} ${fileWord}</strong> downloaded successfully!`,
                                 'success');
-                            // Enable audit button — job is done and audit_data is stored
                             _currentJobId = payload.job_id;
                             setAllBtnsDisabled(false);
                             return;
@@ -1212,8 +1327,15 @@
             }
         }
 
-        pipelineBtns.forEach(btn => {
-            btn.addEventListener('click', () => startPipelineDownload(btn.dataset.type));
+        pipelineBtnStart.addEventListener('click', () => {
+            const selected = [...document.querySelectorAll('.output-option.selected')].map(o => o.dataset.type);
+            if (selected.length === 0) {
+                showBulkStatus(
+                    '<i class="fas fa-exclamation-circle" style="margin-right:8px;"></i>Please select at least one output type.',
+                    'error');
+                return;
+            }
+            startPipelineDownload(selected);
         });
 
         // ── Audit Report Download ─────────────────────────────────────────
