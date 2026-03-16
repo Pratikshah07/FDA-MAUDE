@@ -2297,8 +2297,8 @@ def api_pipeline_start():
                     # Multi-year: fetch each calendar year independently
                     header_written = False
                     for yr in range(year_from_int, year_to_int + 1):
-                        y_start = f"{yr}-01-01"
-                        y_end   = f"{yr}-12-31"
+                        y_start = date_from if yr == year_from_int else f"{yr}-01-01"
+                        y_end   = date_to   if yr == year_to_int   else f"{yr}-12-31"
                         year_probe = _make_year_probe(probe, y_start, y_end)
                         if year_probe is None:
                             continue  # no data for this year — skip
@@ -2699,6 +2699,89 @@ def api_pipeline_download_file(job_id, file_type):
 def device_recall_page():
     """Render Device Recall Search page."""
     return render_template('device_recall.html', user=current_user)
+
+
+@app.route('/api/device-recall/search', methods=['POST'])
+@login_required
+def api_device_recall_search():
+    """Search FDA device recalls via openFDA /device/recall.json."""
+    data = request.get_json() or {}
+    product_code = (data.get('product_code') or '').strip().upper()
+    date_from = (data.get('date_from') or '').strip()
+    date_to = (data.get('date_to') or '').strip()
+
+    if not product_code:
+        return jsonify({'error': 'Product code is required.'}), 400
+    if not date_from or not date_to:
+        return jsonify({'error': 'Date range is required.'}), 400
+
+    try:
+        start_date = datetime.strptime(date_from, '%Y-%m-%d')
+        end_date   = datetime.strptime(date_to,   '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
+
+    if start_date > end_date:
+        return jsonify({'error': 'Date From must be on or before Date To.'}), 400
+
+    start_openfda = start_date.strftime('%Y%m%d')
+    end_openfda   = end_date.strftime('%Y%m%d')
+    base_url = 'https://api.fda.gov/device/recall.json'
+
+    # Try product_code field first, then openfda.product_code
+    search_candidates = [
+        f'product_code:{_format_openfda_search_value(product_code)}+AND+recall_initiation_date:[{start_openfda}+TO+{end_openfda}]',
+        f'openfda.product_code:{_format_openfda_search_value(product_code)}+AND+recall_initiation_date:[{start_openfda}+TO+{end_openfda}]',
+    ]
+
+    records = []
+    total = 0
+    found = False
+    for search_str in search_candidates:
+        try:
+            resp = _openfda_get(base_url, params={'search': search_str, 'limit': 100},
+                                allow_not_found=True, allow_bad_request=True)
+            if resp.status_code == 200:
+                payload = resp.json()
+                results = payload.get('results') or []
+                if results:
+                    records = results
+                    total = payload.get('meta', {}).get('results', {}).get('total', len(results))
+                    found = True
+                    break
+        except Exception:
+            continue
+
+    if not found:
+        return jsonify({'error': f'No recall records found for product code {product_code} in the specified date range.'}), 404
+
+    def _safe(val):
+        if val is None:
+            return ''
+        if isinstance(val, list):
+            return '; '.join(str(v) for v in val if v)
+        return str(val)
+
+    rows = []
+    for r in records:
+        openfda = r.get('openfda') or {}
+        rows.append({
+            'recall_number':         _safe(r.get('recall_number')),
+            'recalling_firm':        _safe(r.get('recalling_firm')),
+            'product_description':   _safe(r.get('product_description')),
+            'reason_for_recall':     _safe(r.get('reason_for_recall')),
+            'status':                _safe(r.get('status')),
+            'classification':        _safe(r.get('classification')),
+            'voluntary_mandated':    _safe(r.get('voluntary_mandated')),
+            'recall_initiation_date':_safe(r.get('recall_initiation_date')),
+            'center_classification_date': _safe(r.get('center_classification_date')),
+            'distribution_pattern':  _safe(r.get('distribution_pattern')),
+            'product_quantity':      _safe(r.get('product_quantity')),
+            'product_code':          _safe(openfda.get('product_code') or r.get('product_code')),
+            'device_name':           _safe(openfda.get('device_name')),
+        })
+
+    return jsonify({'success': True, 'total': total, 'returned': len(rows), 'records': rows}), 200
 
 
 # TXT to CSV Converter Routes

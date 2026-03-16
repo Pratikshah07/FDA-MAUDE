@@ -391,21 +391,21 @@ class MAUDEProcessor:
         if 'T' in date_str:
             date_str = date_str.split('T')[0]
         
+        # Try unambiguous formats first (before dateutil, which misinterprets
+        # YYYY-MM-DD as day-swapped when dayfirst=True)
+        for fmt in ['%Y-%m-%d', '%Y%m%d', '%Y/%m/%d', '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%m-%d-%Y']:
+            try:
+                parsed_date = datetime.strptime(date_str, fmt)
+                return parsed_date.strftime(DATE_FORMAT)
+            except ValueError:
+                continue
+
         try:
-            # Try parsing with dateutil
+            # Last resort: dateutil (handles unusual/partial formats)
             parsed_date = date_parser.parse(date_str, dayfirst=True)
             return parsed_date.strftime(DATE_FORMAT)
         except:
-            try:
-                # Try common formats
-                for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d', '%d-%m-%Y', '%m-%d-%Y']:
-                    try:
-                        parsed_date = datetime.strptime(date_str, fmt)
-                        return parsed_date.strftime(DATE_FORMAT)
-                    except:
-                        continue
-            except:
-                pass
+            pass
         
         # If all parsing fails, return blank
         return ""

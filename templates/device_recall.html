@@ -311,6 +311,97 @@
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        .results-section {
+            margin-top: 32px;
+            display: none;
+        }
+
+        .results-meta {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .results-meta strong { color: var(--text-primary); }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        thead th {
+            background: var(--table-header-bg);
+            color: var(--text-secondary);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.75rem;
+            padding: 10px 14px;
+            text-align: left;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+
+        tbody tr:last-child { border-bottom: none; }
+
+        tbody tr:hover { background: var(--table-hover-bg); }
+
+        tbody td {
+            padding: 10px 14px;
+            color: var(--text-primary);
+            vertical-align: top;
+            max-width: 260px;
+            word-break: break-word;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-open    { background: #fee2e2; color: #991b1b; }
+        .badge-closed  { background: #d1fae5; color: #065f46; }
+        .badge-ongoing { background: #fef3c7; color: #92400e; }
+        .badge-default { background: #e5e7eb; color: #374151; }
+
+        [data-theme="dark"] .badge-open    { background: #3b1a1a; color: #fca5a5; }
+        [data-theme="dark"] .badge-closed  { background: #1a3b2a; color: #6ee7b7; }
+        [data-theme="dark"] .badge-ongoing { background: #3b2e0a; color: #fcd34d; }
+        [data-theme="dark"] .badge-default { background: #2d3748; color: #a0aec0; }
+
+        .export-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 14px;
+            background: var(--success);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .export-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+
         @media (max-width: 768px) {
             .inputs-grid { grid-template-columns: 1fr; }
             .header h1 { font-size: 1.6rem; }
@@ -398,6 +489,34 @@
             </button>
 
             <div class="status" id="statusMsg"></div>
+
+            <div class="results-section" id="resultsSection">
+                <div class="section-divider">
+                    <i class="fas fa-list-ul"></i> Results
+                </div>
+                <div class="results-meta" id="resultsMeta"></div>
+                <button class="export-btn" id="exportCsvBtn">
+                    <i class="fas fa-download"></i> Export CSV
+                </button>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Recall #</th>
+                                <th>Product Code</th>
+                                <th>Device Name</th>
+                                <th>Recalling Firm</th>
+                                <th>Status</th>
+                                <th>Class</th>
+                                <th>Initiation Date</th>
+                                <th>Reason</th>
+                                <th>Distribution</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -437,6 +556,66 @@
         statusMsg.className = 'status ' + type;
     }
 
+    let currentRecords = [];
+
+    function statusBadge(status) {
+        const s = (status || '').toLowerCase();
+        let cls = 'badge-default';
+        if (s === 'ongoing') cls = 'badge-ongoing';
+        else if (s === 'terminated' || s === 'completed') cls = 'badge-closed';
+        else if (s === 'open') cls = 'badge-open';
+        return `<span class="badge ${cls}">${status || '—'}</span>`;
+    }
+
+    function renderTable(records) {
+        const tbody = document.getElementById('resultsBody');
+        tbody.innerHTML = '';
+        records.forEach(function(r) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = [
+                r.recall_number || '—',
+                r.product_code  || '—',
+                r.device_name   || '—',
+                r.recalling_firm || '—',
+                statusBadge(r.status),
+                r.classification || '—',
+                r.recall_initiation_date || '—',
+                r.reason_for_recall || '—',
+                r.distribution_pattern || '—',
+            ].map(function(v, i) {
+                return '<td>' + (i === 4 ? v : escHtml(String(v))) + '</td>';
+            }).join('');
+            tbody.appendChild(tr);
+        });
+    }
+
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function exportCsv(records) {
+        const cols = ['recall_number','product_code','device_name','recalling_firm','status',
+                      'classification','voluntary_mandated','recall_initiation_date',
+                      'center_classification_date','reason_for_recall','distribution_pattern',
+                      'product_quantity','product_description'];
+        const header = cols.join(',');
+        const rows = records.map(function(r) {
+            return cols.map(function(c) {
+                const v = String(r[c] || '').replace(/"/g, '""');
+                return '"' + v + '"';
+            }).join(',');
+        });
+        const blob = new Blob([header + '\n' + rows.join('\n')], {type: 'text/csv'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'device_recalls.csv';
+        a.click();
+    }
+
+    document.getElementById('exportCsvBtn').addEventListener('click', function() {
+        if (currentRecords.length) exportCsv(currentRecords);
+    });
+
     fetchBtn.addEventListener('click', function() {
         const productCode = document.getElementById('productCode').value.trim();
         const dateFrom    = document.getElementById('dateFrom').value;
@@ -456,15 +635,51 @@
         }
 
         showStatus('Fetching recall data…', 'info');
+        document.getElementById('resultsSection').style.display = 'none';
         fetchBtn.disabled = true;
         fetchBtn.innerHTML = '<span class="spinner"></span> Fetching…';
 
-        // Placeholder — API integration to be added
-        setTimeout(function() {
+        firebase.auth().currentUser.getIdToken().then(function(token) {
+            return fetch('/api/device-recall/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    product_code: productCode,
+                    date_from: dateFrom,
+                    date_to: dateTo
+                })
+            });
+        }).then(function(resp) {
+            return resp.json().then(function(data) {
+                return {ok: resp.ok, data: data};
+            });
+        }).then(function(result) {
             fetchBtn.disabled = false;
             fetchBtn.innerHTML = '<i class="fas fa-magnifying-glass"></i> Fetch Recall Data';
-            showStatus('API integration coming soon. Inputs received: product_code=' + productCode + ', from=' + dateFrom + ', to=' + dateTo, 'info');
-        }, 1000);
+            if (!result.ok) {
+                showStatus(result.data.error || 'An error occurred.', 'error');
+                return;
+            }
+            currentRecords = result.data.records || [];
+            showStatus(
+                'Found ' + result.data.total + ' total record(s). Showing ' + result.data.returned + '.',
+                'success'
+            );
+            document.getElementById('resultsMeta').innerHTML =
+                'Product code: <strong>' + escHtml(productCode) + '</strong> &nbsp;|&nbsp; ' +
+                'Date range: <strong>' + escHtml(dateFrom) + '</strong> to <strong>' + escHtml(dateTo) + '</strong> &nbsp;|&nbsp; ' +
+                'Total in FDA database: <strong>' + result.data.total + '</strong> &nbsp;|&nbsp; ' +
+                'Returned: <strong>' + result.data.returned + '</strong>';
+            renderTable(currentRecords);
+            document.getElementById('resultsSection').style.display = 'block';
+        }).catch(function(err) {
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = '<i class="fas fa-magnifying-glass"></i> Fetch Recall Data';
+            showStatus('Request failed: ' + err.message, 'error');
+        });
     });
 </script>
 </body>
