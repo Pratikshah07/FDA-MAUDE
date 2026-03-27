@@ -18,6 +18,7 @@ from typing import Dict
 from datetime import datetime
 import pandas as pd
 import numpy as np
+from backend.parent_company_map import apply_parent_map
 
 # Import the Annex validator for Level-2/3 validation
 try:
@@ -113,7 +114,7 @@ def extract_imdrf_prefixes(imdrf_code_str, level=1):
 
     Level-specific behavior:
     - Level-1: 3 characters (e.g., "A05")
-    - Level-2: 5 characters (e.g., "A0501"), includes truncated Level-3 codes
+    - Level-2: 5 characters (e.g., "A0501"), exact match only (does NOT include Level-3 codes)
     - Level-3: 7 characters (e.g., "A050101"), only exact matches if Annex validation enabled
 
     Args:
@@ -512,6 +513,10 @@ def prepare_data_for_insights(file_path, level=1, annex_file_path=None):
         # Create a synthetic manufacturer column with a default value
         df['_manufacturer'] = 'All Data'
         mfr_col = '_manufacturer'
+        merge_log = []
+    else:
+        # Merge subsidiary/child company names into their parent (display-level only)
+        df, merge_log = apply_parent_map(df, mfr_col)
 
     # Find date column
     date_col = find_date_column(df)
@@ -608,7 +613,8 @@ def prepare_data_for_insights(file_path, level=1, annex_file_path=None):
         "rows_with_imdrf": len(df_exploded),
         "rows_with_dates": len(df_with_dates),
         "level": level,
-        "level_label": level_label
+        "level_label": level_label,
+        "merge_log": merge_log,
     }
 
 
@@ -973,6 +979,63 @@ def get_imdrf_code_manufacturer_monthly_counts(file_path: str, df: pd.DataFrame 
         data_by_level[level] = level_data
 
     return {'months': all_months_str, 'data': data_by_level}
+
+
+def get_mfr_comparison_data(df_exploded, prefix, mfr_col, manufacturer):
+    """
+    Monthly comparison data for one manufacturer vs all others for a specific IMDRF prefix.
+
+    Returns:
+        {
+            'months': ['YYYY-MM', ...],
+            'selected_mfr': [int, ...] or None if manufacturer absent from data,
+            'others_mean': [float, ...],
+            'flat_avg': float,             # total prefix count / n active manufacturers
+            'n_active': int,
+            'selected_in_data': bool,
+        }
+    """
+    df_prefix = df_exploded[df_exploded['imdrf_prefix'] == prefix].copy()
+
+    if df_prefix.empty:
+        return {
+            'months': [], 'selected_mfr': None, 'others_mean': [],
+            'flat_avg': 0.0, 'n_active': 0, 'selected_in_data': False,
+        }
+
+    mfr_counts = df_prefix[mfr_col].value_counts()
+    active_mfrs = set(mfr_counts[mfr_counts > 0].index.tolist())
+    n_active = len(active_mfrs)
+    total_count = int(len(df_prefix))
+    flat_avg = round(total_count / n_active, 4) if n_active > 0 else 0.0
+
+    selected_in_data = manufacturer in active_mfrs
+    other_active_mfrs = sorted(active_mfrs - {manufacturer})
+    n_others = len(other_active_mfrs)
+
+    df_prefix = df_prefix[df_prefix['parsed_date'].notna()].copy()
+    df_prefix['_month'] = df_prefix['parsed_date'].dt.to_period('M')
+    monthly_grouped = df_prefix.groupby([mfr_col, '_month']).size()
+    all_months = sorted(df_prefix['_month'].dropna().unique())
+
+    months_str, selected_counts, others_means = [], [], []
+    for month in all_months:
+        months_str.append(str(month))
+        selected_counts.append(int(monthly_grouped.get((manufacturer, month), 0)))
+        if n_others > 0:
+            other_vals = [int(monthly_grouped.get((m, month), 0)) for m in other_active_mfrs]
+            others_means.append(round(sum(other_vals) / n_others, 4))
+        else:
+            others_means.append(0.0)
+
+    return {
+        'months': months_str,
+        'selected_mfr': selected_counts if selected_in_data else None,
+        'others_mean': others_means,
+        'flat_avg': flat_avg,
+        'n_active': n_active,
+        'selected_in_data': selected_in_data,
+    }
 
 
 def get_top_manufacturers_for_prefix(df_exploded, prefix, mfr_col, top_n=5):

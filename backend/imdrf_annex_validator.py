@@ -237,7 +237,7 @@ def extract_imdrf_codes_by_level(imdrf_code_str: str, level: int, validator: IMD
     - Pipe-separated multi-code cells
     - Level-specific extraction (3, 5, or 7 characters)
     - Validation against Annex file (for Level-3, only exact matches)
-    - For Level-2: includes Level-3 codes truncated to 5 chars
+    - For Level-2: only exact 5-char codes (does NOT include Level-3 codes)
 
     Args:
         imdrf_code_str: String containing IMDRF codes (may be pipe-separated)
@@ -274,10 +274,10 @@ def extract_imdrf_codes_by_level(imdrf_code_str: str, level: int, validator: IMD
         # Extract only alphanumeric characters
         alphanumeric = re.sub(r'[^A-Za-z0-9]', '', token)
 
-        if len(alphanumeric) < required_length:
+        if len(alphanumeric) != required_length:
             continue
 
-        code = alphanumeric[:required_length].upper()
+        code = alphanumeric.upper()
 
         # Validation logic based on level
         if level == 3:
@@ -289,10 +289,10 @@ def extract_imdrf_codes_by_level(imdrf_code_str: str, level: int, validator: IMD
                 # If no Annex file, accept any 7-char code
                 codes.append(code)
         elif level == 2:
-            # Level-2: Accept 5-char codes, including truncated Level-3 codes
+            # Level-2: Accept only exact 5-char codes
             codes.append(code)
         else:
-            # Level-1: Accept 3-char codes (existing behavior)
+            # Level-1: Accept only exact 3-char codes
             codes.append(code)
 
     return codes

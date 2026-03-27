@@ -554,9 +554,10 @@ def api_prepare_insights():
                              f'At least 1 year (365 days) is required for meaningful trend analysis.'
                 }), 400
 
-        # Store file info in session for later use (level can be toggled later)
+        # Store file info and merge log in session for later use
         session[f'insights_file_{file_id}'] = {
-            'path': input_path
+            'path': input_path,
+            'merge_log': result.get('merge_log', []),
         }
 
         return jsonify({
@@ -605,7 +606,10 @@ def api_prepare_insights_from_pipeline():
 
         # Reuse the cleaned file path as the file_id key for refresh calls
         file_id = f"{current_user.id}_{job_id}"
-        session[f'insights_file_{file_id}'] = {'path': cleaned_path}
+        session[f'insights_file_{file_id}'] = {
+            'path': cleaned_path,
+            'merge_log': result.get('merge_log', []),
+        }
 
         return jsonify({
             'success': True,
@@ -714,6 +718,95 @@ def api_top_manufacturers():
             'success': True,
             'top_manufacturers': top_mfrs
         }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/imdrf-insights/manufacturer-avg', methods=['GET'])
+@login_required
+def api_manufacturer_avg():
+    """Get per-manufacturer counts and average for a specific IMDRF prefix."""
+    prefix = request.args.get('prefix')
+    file_id = request.args.get('file_id')
+
+    if not prefix or not file_id:
+        return jsonify({'error': 'Missing prefix or file_id parameter'}), 400
+
+    try:
+        file_info = session.get(f'insights_file_{file_id}')
+        if not file_info:
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+
+        file_path = file_info if isinstance(file_info, str) else file_info.get('path')
+        level = int(request.args.get('level', 1))
+        if level not in [1, 2, 3]:
+            return jsonify({'error': 'Invalid level. Must be 1, 2, or 3.'}), 400
+
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+
+        from backend.imdrf_insights import prepare_data_for_insights
+        result = prepare_data_for_insights(file_path, level=level)
+        df_exploded = result['df_exploded']
+        mfr_col = result['mfr_col']
+
+        df_prefix = df_exploded[df_exploded['imdrf_prefix'] == prefix]
+        mfr_counts = df_prefix[mfr_col].value_counts()
+        # Active manufacturers = those with at least 1 event
+        active = mfr_counts[mfr_counts > 0]
+        total_count = int(active.sum())
+        n_manufacturers = int(len(active))
+        average = round(total_count / n_manufacturers, 2) if n_manufacturers > 0 else 0
+
+        rows = [
+            {'manufacturer': mfr, 'count': int(cnt)}
+            for mfr, cnt in active.sort_values(ascending=False).items()
+        ]
+
+        return jsonify({
+            'success': True,
+            'rows': rows,
+            'total_count': total_count,
+            'n_manufacturers': n_manufacturers,
+            'average': average,
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/imdrf-insights/mfr-comparison-data', methods=['GET'])
+@login_required
+def api_mfr_comparison_data():
+    """Monthly comparison data: selected manufacturer vs others for a specific IMDRF prefix."""
+    prefix       = request.args.get('prefix')
+    file_id      = request.args.get('file_id')
+    manufacturer = request.args.get('manufacturer')
+
+    if not prefix or not file_id or not manufacturer:
+        return jsonify({'error': 'Missing prefix, file_id or manufacturer parameter'}), 400
+
+    try:
+        file_info = session.get(f'insights_file_{file_id}')
+        if not file_info:
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+
+        file_path = file_info if isinstance(file_info, str) else file_info.get('path')
+        level = int(request.args.get('level', 1))
+        if level not in [1, 2, 3]:
+            return jsonify({'error': 'Invalid level. Must be 1, 2, or 3.'}), 400
+
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+
+        from backend.imdrf_insights import prepare_data_for_insights, get_mfr_comparison_data
+        result     = prepare_data_for_insights(file_path, level=level)
+        df_exploded = result['df_exploded']
+        mfr_col    = result['mfr_col']
+
+        data = get_mfr_comparison_data(df_exploded, prefix, mfr_col, manufacturer)
+        return jsonify({'success': True, **data}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -840,11 +933,37 @@ def api_download_code_counts_xlsx():
             get_patient_problem_e_code_mfr_monthly_counts,
             get_imdrf_code_counts_all_levels_with_descriptions,
             get_imdrf_code_monthly_counts,
+            find_manufacturer_column,
         )
-        mfr_monthly = get_imdrf_code_manufacturer_monthly_counts(file_path)
-        pat_mfr_monthly = get_patient_problem_e_code_mfr_monthly_counts(file_path, DEFAULT_IMDRF_PATH)
-        summary_counts = get_imdrf_code_counts_all_levels_with_descriptions(file_path, DEFAULT_IMDRF_PATH)
-        summary_monthly = get_imdrf_code_monthly_counts(file_path)
+        from backend.parent_company_map import apply_parent_map
+
+        # Load file and apply parent company map so XLSX reflects merged names
+        import pandas as _pd
+        _file_ext = os.path.splitext(file_path)[1].lower()
+        if _file_ext in ['.xlsx', '.xls']:
+            _raw_df = _pd.read_excel(file_path, dtype=str, keep_default_na=False)
+        else:
+            _raw_df = _pd.read_csv(file_path, dtype=str, encoding='utf-8',
+                                   on_bad_lines='skip', keep_default_na=False)
+        for _col in _raw_df.columns:
+            _raw_df[_col] = _raw_df[_col].astype(str).str.strip()
+            _raw_df[_col] = _raw_df[_col].replace(
+                {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+        _mfr_col_dl = find_manufacturer_column(_raw_df)
+        if _mfr_col_dl:
+            norm_df, _dl_merge_log = apply_parent_map(_raw_df, _mfr_col_dl)
+        else:
+            norm_df, _dl_merge_log = _raw_df, []
+
+        # Retrieve merge log stored at prepare time (may differ from _dl_merge_log
+        # only if the session expired; fall back to the freshly computed one)
+        _file_info = session.get(f'insights_file_{file_id}', {})
+        merge_log_for_sheet = (_file_info.get('merge_log') or _dl_merge_log) if isinstance(_file_info, dict) else _dl_merge_log
+
+        mfr_monthly = get_imdrf_code_manufacturer_monthly_counts(file_path, df=norm_df)
+        pat_mfr_monthly = get_patient_problem_e_code_mfr_monthly_counts(file_path, DEFAULT_IMDRF_PATH, df=norm_df)
+        summary_counts = get_imdrf_code_counts_all_levels_with_descriptions(file_path, DEFAULT_IMDRF_PATH, df=norm_df)
+        summary_monthly = get_imdrf_code_monthly_counts(file_path, df=norm_df)
 
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
@@ -1061,6 +1180,48 @@ def api_download_code_counts_xlsx():
                 col_letter = get_column_letter(col[0].column)
                 max_len = max((len(str(cell.value)) for cell in col if cell.value), default=8)
                 ws_pat.column_dimensions[col_letter].width = min(max_len + 3, 45)
+
+        # ── Manufacturer Merges sheet ──────────────────────────────────────
+        ws_merges = wb.create_sheet(title='Manufacturer Merges')
+        merge_hdr_font = Font(bold=True, color='FFFFFF')
+        merge_hdr_fill = PatternFill(start_color='1E40AF', end_color='1E40AF', fill_type='solid')
+        merge_row_fill = PatternFill(start_color='F8FAFC', end_color='F8FAFC', fill_type='solid')
+
+        # Title row
+        title_cell = ws_merges.cell(row=1, column=1,
+            value='Manufacturer Parent-Company Merges Applied in This Report')
+        title_cell.font = Font(bold=True, size=12)
+        ws_merges.merge_cells('A1:C1')
+        ws_merges.row_dimensions[1].height = 20
+
+        # Sub-note row
+        note_cell = ws_merges.cell(row=2, column=1,
+            value='Child/subsidiary names below were merged into their parent for analysis. '
+                  'Original CSV data is unchanged.')
+        note_cell.font = Font(italic=True, color='64748B')
+        ws_merges.merge_cells('A2:C2')
+
+        if merge_log_for_sheet:
+            # Header row
+            for ci, h in enumerate(['Original Name (in CSV)', 'Merged Into (Parent)', 'Note'], 1):
+                cell = ws_merges.cell(row=4, column=ci, value=h)
+                cell.font = merge_hdr_font
+                cell.fill = merge_hdr_fill
+                cell.alignment = center
+            # Data rows
+            for ri, entry in enumerate(merge_log_for_sheet, start=5):
+                ws_merges.cell(row=ri, column=1, value=entry.get('original', '')).fill = merge_row_fill
+                ws_merges.cell(row=ri, column=2, value=entry.get('parent', '')).fill = merge_row_fill
+                ws_merges.cell(row=ri, column=3, value='Subsidiary / child entity').fill = merge_row_fill
+        else:
+            ws_merges.cell(row=4, column=1,
+                value='No merges applied — no subsidiary names found in this dataset.')
+
+        # Auto-fit merge sheet columns
+        for col in ws_merges.columns:
+            col_letter = get_column_letter(col[0].column)
+            max_len = max((len(str(cell.value)) for cell in col if cell.value), default=10)
+            ws_merges.column_dimensions[col_letter].width = min(max_len + 4, 60)
 
         output = io.BytesIO()
         wb.save(output)
@@ -2296,19 +2457,25 @@ def api_pipeline_start():
                 if year_from_int and year_to_int and year_to_int > year_from_int:
                     # Multi-year: fetch each calendar year independently
                     header_written = False
+                    cumulative_processed = 0
                     for yr in range(year_from_int, year_to_int + 1):
                         y_start = date_from if yr == year_from_int else f"{yr}-01-01"
                         y_end   = date_to   if yr == year_to_int   else f"{yr}-12-31"
                         year_probe = _make_year_probe(probe, y_start, y_end)
                         if year_probe is None:
                             continue  # no data for this year — skip
-                        for chunk_idx, chunk in enumerate(_maude_generate_csv(year_probe)):
+                        def _yr_progress(count, scanned_count):
+                            dl_progress(cumulative_processed + count, scanned_count)
+
+                        for chunk_idx, chunk in enumerate(_maude_generate_csv(year_probe, progress_callback=_yr_progress)):
                             if chunk_idx == 0 and header_written:
                                 # Skip the CSV header row for all years after the first
                                 continue
                             f.write(chunk)
                             if chunk_idx == 0:
                                 header_written = True
+                        # Accumulate year's record count into cumulative total
+                        cumulative_processed += year_probe.get('total_results', 0)
                 else:
                     # Single year (or unknown range): use original probe directly
                     for chunk in _maude_generate_csv(probe, progress_callback=dl_progress):
@@ -2729,9 +2896,11 @@ def api_device_recall_search():
     base_url = 'https://api.fda.gov/device/recall.json'
 
     # Try product_code field first, then openfda.product_code
+    # Note: the recall date field in openFDA device/recall.json is "event_date_initiated",
+    # NOT "recall_initiation_date" (which silently returns 404).
     search_candidates = [
-        f'product_code:{_format_openfda_search_value(product_code)} AND recall_initiation_date:[{start_openfda} TO {end_openfda}]',
-        f'openfda.product_code:{_format_openfda_search_value(product_code)} AND recall_initiation_date:[{start_openfda} TO {end_openfda}]',
+        f'product_code:{_format_openfda_search_value(product_code)} AND event_date_initiated:[{start_openfda} TO {end_openfda}]',
+        f'openfda.product_code:{_format_openfda_search_value(product_code)} AND event_date_initiated:[{start_openfda} TO {end_openfda}]',
     ]
 
     records = []
@@ -2773,7 +2942,7 @@ def api_device_recall_search():
             'status':                _safe(r.get('status')),
             'classification':        _safe(r.get('classification')),
             'voluntary_mandated':    _safe(r.get('voluntary_mandated')),
-            'recall_initiation_date':_safe(r.get('recall_initiation_date')),
+            'recall_initiation_date':_safe(r.get('event_date_initiated')),
             'center_classification_date': _safe(r.get('center_classification_date')),
             'distribution_pattern':  _safe(r.get('distribution_pattern')),
             'product_quantity':      _safe(r.get('product_quantity')),
