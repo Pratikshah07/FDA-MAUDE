@@ -1448,6 +1448,27 @@ def _build_product_code_query(field_or_fields, code_value: str) -> str:
     return f"{field_or_fields}:{code_value}"
 
 
+def _month_windows(start_str, end_str):
+    """Yield (month_start, month_end) date string pairs covering [start_str, end_str].
+
+    Splits the range into calendar-month chunks so each window stays well below
+    the openFDA max-skip=25000 cap (~26,000 records per query).
+    """
+    from calendar import monthrange as _monthrange
+    start = datetime.strptime(start_str, '%Y-%m-%d').date()
+    end   = datetime.strptime(end_str,   '%Y-%m-%d').date()
+    cur = start.replace(day=1)
+    while cur <= end:
+        w_start = max(cur, start)
+        last_day = _monthrange(cur.year, cur.month)[1]
+        w_end = min(cur.replace(day=last_day), end)
+        yield w_start.strftime('%Y-%m-%d'), w_end.strftime('%Y-%m-%d')
+        if cur.month == 12:
+            cur = cur.replace(year=cur.year + 1, month=1)
+        else:
+            cur = cur.replace(month=cur.month + 1)
+
+
 def _parse_openfda_date(value):
     if not value:
         return None
@@ -1994,6 +2015,32 @@ def _maude_build_row(record, selected_code):
     }
 
 
+def _maude_generate_csv_windowed(probe, date_from, date_to, progress_callback=None):
+    """Generator that yields CSV bytes using monthly windows to bypass the openFDA
+    max-skip=25000 cap.  Each month is fetched independently so high-volume device
+    codes (which can exceed 26,000 records/year) are fully retrieved.
+    """
+    header_written = False
+    cumulative_processed = 0
+    for w_start, w_end in _month_windows(date_from, date_to):
+        win_probe = _make_year_probe(probe, w_start, w_end)
+        if win_probe is None:
+            continue
+        win_base = cumulative_processed  # capture for closure
+
+        def _win_cb(count, scanned, _base=win_base):
+            if progress_callback:
+                progress_callback(_base + count, scanned)
+
+        for chunk_idx, chunk in enumerate(_maude_generate_csv(win_probe, progress_callback=_win_cb)):
+            if chunk_idx == 0 and header_written:
+                continue  # skip duplicate CSV header for subsequent windows
+            yield chunk
+            if chunk_idx == 0:
+                header_written = True
+        cumulative_processed += win_probe.get('total_results', 0)
+
+
 def _maude_generate_csv(probe, progress_callback=None):
     """Generator that yields CSV bytes for a MAUDE export given a completed probe dict."""
     columns = probe['columns']
@@ -2127,7 +2174,8 @@ def api_maude_export():
                                    total=total_results, user_id=job_user_id)
             try:
                 with open(output_path, 'wb') as f:
-                    for chunk in _maude_generate_csv(probe, progress_callback=progress_callback):
+                    for chunk in _maude_generate_csv_windowed(probe, date_from, date_to,
+                                                              progress_callback=progress_callback):
                         f.write(chunk)
                 _set_export_status(job_id, status='done', output_path=output_path,
                                    output_filename=filename, user_id=job_user_id)
@@ -2142,7 +2190,8 @@ def api_maude_export():
             'download_url': url_for('maude_export_download', job_id=job_id)
         }), 202
 
-    response = Response(stream_with_context(_maude_generate_csv(probe)), mimetype='text/csv')
+    response = Response(stream_with_context(_maude_generate_csv_windowed(probe, date_from, date_to)),
+                        mimetype='text/csv')
     response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
@@ -2444,42 +2493,32 @@ def api_pipeline_start():
 
             step1_dest = final_path if pipeline_type == 'raw' else raw_path
 
-            # For multi-year ranges, fetch each year separately to avoid the
+            # Split the full date range into monthly windows to avoid the
             # openFDA max-skip=25000 cap (which caps total records at ~26,000
-            # and, with asc sorting, would return only the earliest year's data).
-            try:
-                year_from_int = datetime.strptime(date_from, '%Y-%m-%d').year
-                year_to_int   = datetime.strptime(date_to,   '%Y-%m-%d').year
-            except ValueError:
-                year_from_int = year_to_int = None
-
+            # per query). High-volume device codes (e.g. knee implants) can
+            # easily exceed 26,000 records in a single year, causing records
+            # from later months to be silently dropped with year-level windows.
+            # Monthly windows keep each fetch well below the cap.
             with open(step1_dest, 'wb') as f:
-                if year_from_int and year_to_int and year_to_int > year_from_int:
-                    # Multi-year: fetch each calendar year independently
-                    header_written = False
-                    cumulative_processed = 0
-                    for yr in range(year_from_int, year_to_int + 1):
-                        y_start = date_from if yr == year_from_int else f"{yr}-01-01"
-                        y_end   = date_to   if yr == year_to_int   else f"{yr}-12-31"
-                        year_probe = _make_year_probe(probe, y_start, y_end)
-                        if year_probe is None:
-                            continue  # no data for this year — skip
-                        def _yr_progress(count, scanned_count):
-                            dl_progress(cumulative_processed + count, scanned_count)
+                header_written = False
+                cumulative_processed = 0
+                for w_start, w_end in _month_windows(date_from, date_to):
+                    win_probe = _make_year_probe(probe, w_start, w_end)
+                    if win_probe is None:
+                        continue  # no data for this month — skip
+                    win_processed = cumulative_processed  # capture for closure
 
-                        for chunk_idx, chunk in enumerate(_maude_generate_csv(year_probe, progress_callback=_yr_progress)):
-                            if chunk_idx == 0 and header_written:
-                                # Skip the CSV header row for all years after the first
-                                continue
-                            f.write(chunk)
-                            if chunk_idx == 0:
-                                header_written = True
-                        # Accumulate year's record count into cumulative total
-                        cumulative_processed += year_probe.get('total_results', 0)
-                else:
-                    # Single year (or unknown range): use original probe directly
-                    for chunk in _maude_generate_csv(probe, progress_callback=dl_progress):
+                    def _win_progress(count, scanned_count, _base=win_processed):
+                        dl_progress(_base + count, scanned_count)
+
+                    for chunk_idx, chunk in enumerate(_maude_generate_csv(win_probe, progress_callback=_win_progress)):
+                        if chunk_idx == 0 and header_written:
+                            # Skip the CSV header for every window after the first
+                            continue
                         f.write(chunk)
+                        if chunk_idx == 0:
+                            header_written = True
+                    cumulative_processed += win_probe.get('total_results', 0)
 
             # Keep raw file as a secondary output if it was explicitly requested
             if pipeline_type != 'raw' and 'raw' in requested_outputs:
