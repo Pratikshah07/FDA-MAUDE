@@ -1796,3 +1796,796 @@ def build_report_pdf(report_data, chart_images):
     doc.build(story)
     buf.seek(0)
     return buf.read()
+
+
+# ── PSUR-Style Detailed Report ────────────────────────────────────────────────
+
+def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
+                                  year_from, year_to, level=1):
+    """
+    Compute all data needed for the PSUR-style detailed PDF report.
+
+    Args:
+        df_exploded:  DataFrame from prepare_data_for_insights
+                      (columns: imdrf_prefix, parsed_date, mfr_col, ...)
+        mfr_col:      manufacturer column name
+        file_path:    path to cleaned data file (for patient problems / event types)
+        annex_path:   path to IMDRF Annexes file (for descriptions)
+        year_from, year_to: integer year bounds (inclusive)
+        level:        analysis level (1/2/3), used for display label only
+
+    Returns:
+        dict with keys: year_from, year_to, years, total_events,
+        total_manufacturers, level_label, top5_families, patient_problems,
+        event_type_counts
+    """
+    # Filter df_exploded to year range (used for yearly counts + manufacturers)
+    df = df_exploded[
+        df_exploded['parsed_date'].notna() &
+        (df_exploded['parsed_date'].dt.year >= year_from) &
+        (df_exploded['parsed_date'].dt.year <= year_to)
+    ].copy()
+
+    df['_l1'] = df['imdrf_prefix'].str[:3].str.upper()
+    years = list(range(year_from, year_to + 1))
+    total_events = len(df)
+    total_manufacturers = int(df[mfr_col].nunique()) if mfr_col in df.columns else 0
+
+    # Load IMDRF descriptions  {1: {code: str}, 2: {code: str}, 3: {code: str}}
+    try:
+        descs = load_imdrf_code_descriptions(annex_path)
+    except Exception:
+        descs = {}
+    l1_descs = descs.get(1, {})
+    l2_descs = descs.get(2, {})
+    l3_descs = descs.get(3, {})
+
+    # ── Load raw file + get all-level counts for hierarchy breakdown ───────────
+    # get_imdrf_code_counts_all_levels uses exact-length matching (3/5/7 chars),
+    # so each event is counted at exactly one level — no double-counting.
+    # Grand total per family = L1_direct + L2_direct + L3_direct counts.
+    raw_df = pd.DataFrame()
+    l1_all: dict = {}
+    l2_all: dict = {}
+    l3_all: dict = {}
+    patient_problems: dict = {}
+    event_type_counts: dict = {}
+    family_grand_totals: dict = {}
+
+    try:
+        raw_df = _load_cleaned_dataframe(file_path)
+        date_col_raw = find_date_column(raw_df)
+        if date_col_raw:
+            raw_df['_pd'] = raw_df[date_col_raw].apply(parse_flexible_date)
+            raw_df = raw_df[
+                raw_df['_pd'].notna() &
+                (raw_df['_pd'].dt.year >= year_from) &
+                (raw_df['_pd'].dt.year <= year_to)
+            ].copy()
+
+        # All-level counts on the year-filtered raw data
+        _all_counts = get_imdrf_code_counts_all_levels(file_path=None, df=raw_df)
+        l1_all = _all_counts.get(1, {})
+        l2_all = _all_counts.get(2, {})
+        l3_all = _all_counts.get(3, {})
+
+        # Compute grand total per L1 family (L1_direct + L2_direct + L3_direct)
+        all_families = set()
+        for _c in list(l1_all) + list(l2_all) + list(l3_all):
+            all_families.add(_c[:3].upper())
+        for _fam in all_families:
+            _gt = l1_all.get(_fam, 0)
+            _gt += sum(v for k, v in l2_all.items() if k[:3] == _fam)
+            _gt += sum(v for k, v in l3_all.items() if k[:3] == _fam)
+            family_grand_totals[_fam] = _gt
+
+        try:
+            patient_problems = get_patient_problem_counts(file_path=None, df=raw_df)
+        except Exception:
+            pass
+        for _col in raw_df.columns:
+            if _col.strip().lower() in ('event type', 'event_type'):
+                event_type_counts = {
+                    str(k): int(v)
+                    for k, v in raw_df[_col].value_counts().items()
+                    if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
+                }
+                break
+    except Exception:
+        pass
+
+    # ── Determine top-5 A-code families ──────────────────────────────────────
+    # Prefer all-level grand totals; fall back to df_exploded l1_counts
+    if family_grand_totals:
+        a_families = {k: v for k, v in family_grand_totals.items()
+                      if not k.startswith('E') and k not in EXCLUDED_IMDRF_L1_PREFIXES}
+        top5_codes = sorted(a_families, key=lambda c: -a_families[c])[:5]
+    else:
+        l1_counts = df['_l1'].value_counts()
+        a_codes = [c for c in l1_counts.index if not c.startswith('E')]
+        top5_codes = a_codes[:5]
+
+    top5_families = []
+    for code in top5_codes:
+        df_code = df[df['_l1'] == code]
+
+        # Year-by-year totals (from df_exploded — used for the mini year table)
+        yearly = [int((df_code['parsed_date'].dt.year == yr).sum()) for yr in years]
+
+        # Top manufacturers (from df_exploded)
+        top_mfrs = []
+        if mfr_col in df_code.columns:
+            _fam_gt = family_grand_totals.get(code, 0) or int(l1_counts.get(code, 0) if not family_grand_totals else 0)
+            for k, v in df_code[mfr_col].value_counts().head(5).items():
+                top_mfrs.append({'name': str(k), 'count': int(v)})
+
+        top_l2 = []
+        for k, v in df_code['imdrf_prefix'].str[:5].value_counts().head(5).items():
+            k_str = str(k)
+            if len(k_str) >= 5:
+                top_l2.append({
+                    'code': k_str,
+                    'count': int(v),
+                    'description': str(l2_descs.get(k_str, '')),
+                })
+
+        # ── Full L1/L2/L3 hierarchy ───────────────────────────────────────────
+        # Built from all-level counts so every code at its true granularity
+        # appears exactly once. Grand total = sum of all rows = total events.
+        full_hierarchy = []
+
+        # L1 direct row (events coded exactly as the 3-char L1 code)
+        l1_direct = l1_all.get(code, 0)
+        full_hierarchy.append({
+            'code': code,
+            'level': 'Level 1',
+            'description': str(l1_descs.get(code, '')),
+            'total': l1_direct,
+        })
+
+        # L2 rows, sorted; under each L2, its L3 children sorted
+        l2_codes = sorted(k for k in l2_all if k[:3] == code)
+        for l2c in l2_codes:
+            full_hierarchy.append({
+                'code': l2c,
+                'level': 'Level 2',
+                'description': str(l2_descs.get(l2c, '')),
+                'total': l2_all[l2c],
+            })
+            l3_codes = sorted(k for k in l3_all if k[:5] == l2c)
+            for l3c in l3_codes:
+                full_hierarchy.append({
+                    'code': l3c,
+                    'level': 'Level 3',
+                    'description': str(l3_descs.get(l3c, '')),
+                    'total': l3_all[l3c],
+                })
+
+        # Orphan L3 codes not under any L2 we listed (edge case)
+        placed = {r['code'] for r in full_hierarchy}
+        for l3c in sorted(k for k in l3_all if k[:3] == code and k not in placed):
+            full_hierarchy.append({
+                'code': l3c,
+                'level': 'Level 3',
+                'description': str(l3_descs.get(l3c, '')),
+                'total': l3_all[l3c],
+            })
+
+        grand_total = family_grand_totals.get(code, sum(r['total'] for r in full_hierarchy))
+
+        top5_families.append({
+            'code': code,
+            'description': str(l1_descs.get(code, '')),
+            'grand_total': grand_total,
+            'yearly_counts': yearly,
+            'top_manufacturers': top_mfrs,
+            'top_l2_codes': top_l2,
+            'full_hierarchy': full_hierarchy,
+        })
+
+    return {
+        'year_from': year_from,
+        'year_to': year_to,
+        'years': years,
+        'total_events': total_events,
+        'total_manufacturers': total_manufacturers,
+        'level_label': LEVEL_CONFIG.get(level, {}).get('label', f'Level-{level}'),
+        'top5_families': top5_families,
+        'patient_problems': patient_problems,
+        'event_type_counts': event_type_counts,
+    }
+
+
+def render_detailed_yoy_bar_chart(years, top5_families):
+    """Grouped bar chart — total events per year for each top code family."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from io import BytesIO
+
+    palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    n_fam = len(top5_families)
+    n_yr  = len(years)
+    x     = np.arange(n_yr)
+    width = 0.7 / max(n_fam, 1)
+
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    for i, fam in enumerate(top5_families):
+        offset = (i - n_fam / 2.0 + 0.5) * width
+        label  = f"{fam['code']} — {fam['description'][:35]}" if fam['description'] else fam['code']
+        ax.bar(x + offset, fam['yearly_counts'], width,
+               label=label, color=palette[i % len(palette)], alpha=0.85)
+
+    ax.set_xlabel('Year', fontsize=11)
+    ax.set_ylabel('Total Events', fontsize=11)
+    ax.set_title('Year-over-Year Event Trends — Top Code Families',
+                 fontsize=13, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(y) for y in years])
+    ax.legend(fontsize=8, loc='upper left', framealpha=0.7)
+    ax.grid(axis='y', alpha=0.3)
+    ax.set_facecolor('#f8f9fa')
+    fig.patch.set_facecolor('white')
+    fig.tight_layout()
+
+    buf = BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def render_detailed_total_bar_chart(top5_families):
+    """Horizontal bar — grand total events per code family."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from io import BytesIO
+
+    if not top5_families:
+        return None
+
+    palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    labels  = [
+        f"{f['code']} — {f['description'][:38]}" if f['description'] else f['code']
+        for f in top5_families
+    ]
+    totals  = [f['grand_total'] for f in top5_families]
+    max_val = max(totals) if totals else 1
+
+    fig, ax = plt.subplots(figsize=(10, max(3, len(top5_families) * 0.8)))
+    bars = ax.barh(
+        range(len(labels)),
+        totals[::-1],
+        color=[palette[i % len(palette)] for i in range(len(labels))],
+        alpha=0.85,
+    )
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels[::-1], fontsize=9)
+    ax.set_xlabel('Total Events', fontsize=11)
+    ax.set_title('Total Events by Code Family (All Years)', fontsize=13, fontweight='bold')
+    for bar, val in zip(bars, totals[::-1]):
+        ax.text(bar.get_width() + max_val * 0.01, bar.get_y() + bar.get_height() / 2,
+                f'{val:,}', va='center', fontsize=9)
+    ax.grid(axis='x', alpha=0.3)
+    ax.set_facecolor('#f8f9fa')
+    fig.patch.set_facecolor('white')
+    fig.tight_layout()
+
+    buf = BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def render_detailed_patient_problems_bar(pp_counts, top_n=10):
+    """Horizontal bar — top N patient-reported problems by count."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from io import BytesIO
+
+    sorted_pp = sorted(pp_counts.items(), key=lambda x: -x[1])[:top_n]
+    if not sorted_pp:
+        return None
+
+    labels = [p[:55] for p, _ in sorted_pp]
+    counts = [c for _, c in sorted_pp]
+
+    fig, ax = plt.subplots(figsize=(10, max(3, top_n * 0.55)))
+    ax.barh(range(len(labels)), counts[::-1], color='#4e79a7', alpha=0.85)
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels[::-1], fontsize=9)
+    ax.set_xlabel('Number of Reports', fontsize=11)
+    ax.set_title('Top Patient-Reported Problems', fontsize=13, fontweight='bold')
+    ax.grid(axis='x', alpha=0.3)
+    ax.set_facecolor('#f8f9fa')
+    fig.patch.set_facecolor('white')
+    fig.tight_layout()
+
+    buf = BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def build_detailed_report_pdf(report_data, chart_images):
+    """
+    Build the PSUR-style detailed IMDRF analysis PDF using ReportLab.
+
+    Args:
+        report_data:   dict returned by compute_detailed_report_data()
+        chart_images:  dict with optional BytesIO keys:
+                       'yoy_bar', 'total_bar', 'patient_problems_bar'
+
+    Returns:
+        bytes — raw PDF content
+    """
+    from io import BytesIO
+    from datetime import datetime as dt
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Table, TableStyle, Image, HRFlowable,
+                                    PageBreak)
+    from reportlab.lib.units import cm
+
+    buf      = BytesIO()
+    doc      = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2*cm, rightMargin=2*cm,
+        topMargin=2*cm, bottomMargin=2*cm,
+    )
+    page_w   = A4[0] - 4*cm   # usable width ~17.0 cm
+
+    styles   = getSampleStyleSheet()
+    navy     = colors.HexColor('#1e3a5f')
+    teal     = colors.HexColor('#0d6e6e')
+    light_bg = colors.HexColor('#f0f4ff')
+    mid_bg   = colors.HexColor('#dce8f8')
+    accent   = colors.HexColor('#e8f5e9')
+
+    title_style   = ParagraphStyle('DRTitle', parent=styles['Title'],
+                                   fontSize=20, textColor=navy, spaceAfter=4, leading=26)
+    sub_style     = ParagraphStyle('DRSub',   parent=styles['Normal'],
+                                   fontSize=10, textColor=colors.grey, spaceAfter=6)
+    h1_style      = ParagraphStyle('DRH1',    parent=styles['Heading1'],
+                                   fontSize=15, textColor=navy, spaceBefore=18, spaceAfter=8,
+                                   borderPad=4)
+    h2_style      = ParagraphStyle('DRH2',    parent=styles['Heading2'],
+                                   fontSize=12, textColor=teal, spaceBefore=14, spaceAfter=6)
+    h3_style      = ParagraphStyle('DRH3',    parent=styles['Heading3'],
+                                   fontSize=11, textColor=navy, spaceBefore=10, spaceAfter=4)
+    body_style    = ParagraphStyle('DRBody',  parent=styles['Normal'],
+                                   fontSize=10, leading=15, spaceAfter=8)
+    note_style    = ParagraphStyle('DRNote',  parent=styles['Normal'],
+                                   fontSize=9,  textColor=colors.grey, leading=13, spaceAfter=6)
+    caption_style = ParagraphStyle('DRCaption', parent=styles['Normal'],
+                                   fontSize=9, textColor=colors.grey, alignment=1, spaceAfter=10)
+
+    def make_table(header_row, data_rows, col_widths, alt_color=light_bg):
+        table_data = [header_row] + data_rows
+        tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, 0), navy),
+            ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+            ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE',      (0, 0), (-1, 0), 9),
+            ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN',         (0, 1), (0, -1), 'LEFT'),
+            ('ALIGN',         (1, 1), (1, -1), 'LEFT'),
+            ('FONTSIZE',      (0, 1), (-1, -1), 9),
+            ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, alt_color]),
+            ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor('#c7d2e8')),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 5),
+        ]))
+        return tbl
+
+    def embed_image(buf_img, width=None, height=None):
+        if buf_img is None:
+            return None
+        if hasattr(buf_img, 'seek'):
+            buf_img.seek(0)
+        w = width or page_w
+        h = height or (w * 0.45)
+        return Image(buf_img, width=w, height=h)
+
+    story = []
+    yr_from = report_data['year_from']
+    yr_to   = report_data['year_to']
+    years   = report_data['years']
+    total   = report_data['total_events']
+    n_mfrs  = report_data['total_manufacturers']
+    fams    = report_data['top5_families']
+    pp      = report_data['patient_problems']
+    et      = report_data['event_type_counts']
+    pi      = report_data.get('product_info') or {}
+
+    pc_code        = pi.get('product_code', '')
+    pc_name        = pi.get('device_name', '')
+    pc_specialty   = pi.get('medical_specialty', '')
+    pc_class       = pi.get('device_class', '')
+    pc_reg         = pi.get('regulation_number', '')
+    pc_definition  = pi.get('definition', '')
+    pc_date_from   = pi.get('date_from', '')
+    pc_date_to     = pi.get('date_to', '')
+
+    # ── Cover Page ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 1.5*cm))
+    story.append(Paragraph('FDA MAUDE — IMDRF Code Analysis Report', title_style))
+    story.append(Paragraph(
+        f"Generated: <b>{dt.now().strftime('%d %B %Y')}</b>",
+        sub_style,
+    ))
+    story.append(HRFlowable(width='100%', thickness=2, color=navy, spaceAfter=14))
+
+    # ── Product Code information block ────────────────────────────────────────
+    if pc_code:
+        prod_label_style = ParagraphStyle('ProdLabel', parent=styles['Normal'],
+                                          fontSize=9, textColor=colors.grey, spaceAfter=2)
+        prod_code_style  = ParagraphStyle('ProdCode', parent=styles['Normal'],
+                                          fontSize=22, textColor=navy, fontName='Helvetica-Bold',
+                                          spaceAfter=2, leading=26)
+        prod_name_style  = ParagraphStyle('ProdName', parent=styles['Normal'],
+                                          fontSize=13, textColor=teal, fontName='Helvetica-Bold',
+                                          spaceAfter=6, leading=18)
+        prod_desc_style  = ParagraphStyle('ProdDesc', parent=styles['Normal'],
+                                          fontSize=10, leading=15, spaceAfter=4)
+        prod_meta_style  = ParagraphStyle('ProdMeta', parent=styles['Normal'],
+                                          fontSize=9, textColor=colors.HexColor('#555555'),
+                                          leading=13, spaceAfter=2)
+
+        story.append(Paragraph('PRODUCT CODE', prod_label_style))
+        story.append(Paragraph(pc_code, prod_code_style))
+        if pc_name:
+            story.append(Paragraph(pc_name, prod_name_style))
+
+        # Date range inputted
+        date_range_str = ''
+        if pc_date_from and pc_date_to:
+            date_range_str = f"{pc_date_from} &nbsp;to&nbsp; {pc_date_to}"
+        elif yr_from and yr_to:
+            date_range_str = f"{yr_from} – {yr_to}"
+        if date_range_str:
+            story.append(Paragraph(f"<b>Date Range:</b> {date_range_str}", prod_meta_style))
+
+        meta_parts = []
+        if pc_specialty:
+            meta_parts.append(f"<b>Medical Specialty:</b> {pc_specialty}")
+        if pc_class:
+            meta_parts.append(f"<b>Device Class:</b> {pc_class}")
+        if pc_reg:
+            meta_parts.append(f"<b>Regulation No.:</b> {pc_reg}")
+        if meta_parts:
+            story.append(Paragraph(' &nbsp;|&nbsp; '.join(meta_parts), prod_meta_style))
+
+        if pc_definition:
+            trunc = pc_definition[:500] + ('…' if len(pc_definition) > 500 else '')
+            story.append(Spacer(1, 0.2*cm))
+            story.append(Paragraph(f"<i>{trunc}</i>", prod_desc_style))
+
+        story.append(HRFlowable(width='100%', thickness=1, color=colors.HexColor('#c7d2e8'),
+                                spaceBefore=10, spaceAfter=12))
+
+    story.append(Paragraph(
+        "This report presents an analysis of adverse event data from the FDA Manufacturer "
+        "and User Facility Device Experience (MAUDE) database. Events are classified using the "
+        "International Medical Device Regulators Forum (IMDRF) coding system. The report "
+        "covers device problem codes (A-codes), patient problem descriptors, and event outcome "
+        "classifications for the selected period.",
+        body_style,
+    ))
+    story.append(Spacer(1, 0.5*cm))
+
+    # Summary metrics box
+    top_code = fams[0] if fams else None
+    meta_rows = [
+        ['Total IMDRF events analysed', f'{total:,}'],
+        ['Total manufacturers identified', f'{n_mfrs:,}'],
+        ['Analysis period', f'{yr_from} – {yr_to}'],
+    ]
+    if top_code:
+        meta_rows.append(['Top code family', f"{top_code['code']} — {top_code['description']}"])
+    meta_tbl = Table(meta_rows, colWidths=[page_w * 0.45, page_w * 0.55])
+    meta_tbl.setStyle(TableStyle([
+        ('BACKGROUND',  (0, 0), (0, -1), mid_bg),
+        ('FONTNAME',    (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0, 0), (-1, -1), 10),
+        ('ALIGN',       (0, 0), (-1, -1), 'LEFT'),
+        ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor('#b0c4de')),
+        ('TOPPADDING',  (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(meta_tbl)
+    story.append(PageBreak())
+
+    # ── Section 1 — Top IMDRF Code Families ──────────────────────────────────
+    story.append(Paragraph('1. Top IMDRF Code Families', h1_style))
+    story.append(HRFlowable(width='100%', thickness=1, color=navy, spaceAfter=8))
+    story.append(Paragraph(
+        "The table below summarises the top device-problem code families (Level-1 A-codes) "
+        "identified in the dataset, ranked by total event count across the analysis period. "
+        "Codes A24 and A25 (device investigation outcomes) are excluded as per standard practice.",
+        body_style,
+    ))
+
+    # Overview table: Code | Description | Grand Total | % of All
+    if fams:
+        pct_rows = [
+            [f['code'],
+             Paragraph(f['description'] or '—', ParagraphStyle('td', fontSize=9, leading=12)),
+             f"{f['grand_total']:,}",
+             f"{f['grand_total']/total*100:.1f}%" if total else '—']
+            for f in fams
+        ]
+        col_w = [page_w*0.12, page_w*0.52, page_w*0.18, page_w*0.18]
+        story.append(make_table(
+            ['Code', 'Description', 'Total Events', '% of All Events'],
+            pct_rows, col_w,
+        ))
+    story.append(Spacer(1, 8))
+
+    # Year-over-year grouped bar chart
+    yoy_img = embed_image(chart_images.get('yoy_bar'), width=page_w, height=page_w * 0.45)
+    if yoy_img:
+        story.append(yoy_img)
+        story.append(Paragraph('Figure 1: Year-over-year event counts for top code families.',
+                                caption_style))
+
+    # Total comparison bar chart
+    tot_img = embed_image(chart_images.get('total_bar'), width=page_w, height=page_w * 0.38)
+    if tot_img:
+        story.append(tot_img)
+        story.append(Paragraph('Figure 2: Total event count comparison across top code families.',
+                                caption_style))
+
+    story.append(PageBreak())
+
+    # Per-family subsections
+    story.append(Paragraph('1.1 Code Family Details', h2_style))
+    for fam in fams:
+        code = fam['code']
+        desc = fam['description'] or code
+        story.append(Paragraph(f"{code} — {desc}", h3_style))
+
+        hierarchy   = fam.get('full_hierarchy', [])
+        grand_total = fam['grand_total']
+
+        # ── Year-by-year event summary ────────────────────────────────────────
+        yr_header = [''] + [str(y) for y in years]
+        yr_row    = ['Events'] + [f"{c:,}" if c else '—' for c in fam['yearly_counts']]
+        col_w_yr  = [page_w * 0.14] + [page_w * 0.86 / max(len(years), 1)] * len(years)
+        story.append(make_table(yr_header, [yr_row], col_w_yr))
+        story.append(Spacer(1, 6))
+
+        # ── Full L1/L2/L3 hierarchy breakdown table ───────────────────────────
+        # Format: Code | Level | Description | Count  (total across full period)
+        # matching the Excel distribution view
+        col_widths_h = [page_w * 0.13, page_w * 0.12, page_w * 0.63, page_w * 0.12]
+
+        hdr_s  = ParagraphStyle('HHdr',  parent=styles['Normal'],
+                                fontSize=9, alignment=1, textColor=colors.white,
+                                fontName='Helvetica-Bold')
+        l1_s   = ParagraphStyle('HL1',   parent=styles['Normal'],
+                                fontSize=9, fontName='Helvetica-Bold',
+                                textColor=navy, leading=12)
+        l2_s   = ParagraphStyle('HL2',   parent=styles['Normal'],
+                                fontSize=9, leading=12, textColor=teal)
+        l3_s   = ParagraphStyle('HL3',   parent=styles['Normal'],
+                                fontSize=8, leading=11,
+                                textColor=colors.HexColor('#333333'))
+        desc_s = ParagraphStyle('HDesc', parent=styles['Normal'],
+                                fontSize=9, leading=11)
+        gt_s   = ParagraphStyle('HGT',   parent=styles['Normal'],
+                                fontSize=9, fontName='Helvetica-Bold',
+                                textColor=colors.white)
+
+        h_header = [
+            Paragraph('Code',        hdr_s),
+            Paragraph('Level',       hdr_s),
+            Paragraph('Description', hdr_s),
+            Paragraph('Count',       hdr_s),
+        ]
+
+        level_bg = {
+            'Level 1': colors.HexColor('#dce8f8'),
+            'Level 2': colors.HexColor('#f0f4ff'),
+            'Level 3': colors.white,
+        }
+
+        h_data_rows   = []  # cell data
+        h_row_bgs     = []  # (tbl_row_index, bg_color) — index includes header at 0
+
+        for row in hierarchy:
+            lvl = row['level']
+            if   lvl == 'Level 1': rs = l1_s
+            elif lvl == 'Level 2': rs = l2_s
+            else:                   rs = l3_s
+            cnt = row['total']
+            h_data_rows.append([
+                Paragraph(row['code'],                      rs),
+                Paragraph(lvl,                              rs),
+                Paragraph(row['description'] or '—',       desc_s),
+                Paragraph(f"{cnt:,}" if cnt else '—',      rs),
+            ])
+            # tbl row index = 1-based data index + 1 header row = len(h_data_rows) after append
+            h_row_bgs.append((len(h_data_rows), level_bg.get(lvl, colors.white)))
+
+        # Grand Total row — appended last; its tbl index = len(h_data_rows) + 1 (header)
+        h_data_rows.append([
+            Paragraph('Grand Total', gt_s),
+            Paragraph('',            gt_s),
+            Paragraph('',            gt_s),
+            Paragraph(f"{grand_total:,}", gt_s),
+        ])
+        gt_tbl_idx = len(h_data_rows)  # = n_data_rows (after append); +header(0) = this index
+
+        tbl_data = [h_header] + h_data_rows
+        hier_tbl = Table(tbl_data, colWidths=col_widths_h, repeatRows=1)
+
+        ts_cmds = [
+            ('BACKGROUND',    (0, 0),  (-1, 0),              navy),
+            ('ALIGN',         (0, 0),  (-1, -1),             'CENTER'),
+            ('ALIGN',         (0, 1),  (2, -2),              'LEFT'),
+            ('GRID',          (0, 0),  (-1, -1),             0.3, colors.HexColor('#b0c4de')),
+            ('TOPPADDING',    (0, 0),  (-1, -1),             3),
+            ('BOTTOMPADDING', (0, 0),  (-1, -1),             3),
+            ('LEFTPADDING',   (0, 0),  (-1, -1),             4),
+            # Grand Total row — always last row in table
+            ('BACKGROUND',    (0, gt_tbl_idx), (-1, gt_tbl_idx), navy),
+            ('TEXTCOLOR',     (0, gt_tbl_idx), (-1, gt_tbl_idx), colors.white),
+            ('FONTNAME',      (0, gt_tbl_idx), (-1, gt_tbl_idx), 'Helvetica-Bold'),
+        ]
+        # Per-row backgrounds (applied after GT so GT takes priority via later append)
+        for (ri, bg) in h_row_bgs:
+            if ri != gt_tbl_idx:   # never overwrite GT row
+                ts_cmds.append(('BACKGROUND', (0, ri), (-1, ri), bg))
+
+        hier_tbl.setStyle(TableStyle(ts_cmds))
+        story.append(hier_tbl)
+        story.append(Spacer(1, 8))
+
+        # Top manufacturers table
+        if fam['top_manufacturers']:
+            story.append(Paragraph('Top Manufacturers:', body_style))
+            mfr_rows = [[m['name'], f"{m['count']:,}",
+                         f"{m['count']/fam['grand_total']*100:.1f}%" if fam['grand_total'] else '—']
+                        for m in fam['top_manufacturers']]
+            story.append(make_table(
+                ['Manufacturer', 'Events', '% of Code Total'],
+                mfr_rows,
+                [page_w*0.60, page_w*0.20, page_w*0.20],
+            ))
+
+        story.append(Spacer(1, 10))
+
+    story.append(PageBreak())
+
+    # ── Section 2 — Patient Problems & Event Outcomes ─────────────────────────
+    story.append(Paragraph('2. Patient Problems & Event Outcomes', h1_style))
+    story.append(HRFlowable(width='100%', thickness=1, color=navy, spaceAfter=8))
+
+    # 2a — Patient problems (E-code descriptors)
+    story.append(Paragraph('2.1 Patient-Reported Problems', h2_style))
+    story.append(Paragraph(
+        "Patient problem descriptors, as reported in MAUDE submissions, are summarised below. "
+        "These correspond to IMDRF Annex E patient problem codes and represent the most frequently "
+        "cited adverse outcomes experienced by patients.",
+        body_style,
+    ))
+
+    if pp:
+        top_pp = sorted(pp.items(), key=lambda x: -x[1])[:15]
+        pp_total = sum(pp.values())
+        pp_rows = [
+            [Paragraph(prob[:80], ParagraphStyle('pprow', fontSize=9, leading=12)),
+             f"{cnt:,}",
+             f"{cnt/pp_total*100:.1f}%" if pp_total else '—']
+            for prob, cnt in top_pp
+        ]
+        story.append(make_table(
+            ['Patient Problem', 'Reports', '% of All'],
+            pp_rows,
+            [page_w*0.65, page_w*0.17, page_w*0.18],
+            alt_color=accent,
+        ))
+    else:
+        story.append(Paragraph('No patient problem data available in this dataset.', note_style))
+
+    # Patient problems chart
+    pp_img = embed_image(chart_images.get('patient_problems_bar'), width=page_w, height=page_w * 0.48)
+    if pp_img:
+        story.append(pp_img)
+        story.append(Paragraph('Figure 3: Top 10 patient-reported problems by frequency.',
+                                caption_style))
+
+    # 2b — Event outcome types (Annex F proxy)
+    story.append(Paragraph('2.2 Event Outcome Classification', h2_style))
+    story.append(Paragraph(
+        "The table below shows event outcome classifications as recorded in the MAUDE reports. "
+        "These categories correspond broadly to IMDRF Annex F patient outcome codes and include "
+        "injury, malfunction, death, and other classifications.",
+        body_style,
+    ))
+
+    if et:
+        et_total = sum(et.values())
+        et_rows = [
+            [etype, f"{cnt:,}", f"{cnt/et_total*100:.1f}%" if et_total else '—']
+            for etype, cnt in sorted(et.items(), key=lambda x: -x[1])
+        ]
+        story.append(make_table(
+            ['Event Type', 'Count', '% of All Events'],
+            et_rows,
+            [page_w*0.55, page_w*0.22, page_w*0.23],
+            alt_color=accent,
+        ))
+    else:
+        story.append(Paragraph('No event type classification data available in this dataset.',
+                                note_style))
+
+    story.append(PageBreak())
+
+    # ── Section 3 — Conclusion ────────────────────────────────────────────────
+    story.append(Paragraph('3. Conclusion', h1_style))
+    story.append(HRFlowable(width='100%', thickness=1, color=navy, spaceAfter=8))
+
+    top_code_str = (
+        f"<b>{fams[0]['code']}</b> ({fams[0]['description']})"
+        if fams else "the analysed codes"
+    )
+    yr_range_str = f"{yr_from}" if yr_from == yr_to else f"{yr_from}–{yr_to}"
+
+    conclusion = (
+        f"This report analysed <b>{total:,}</b> IMDRF-coded adverse event records from the FDA "
+        f"MAUDE database for the period <b>{yr_range_str}</b>, involving "
+        f"<b>{n_mfrs:,}</b> distinct manufacturers. The predominant device problem code family "
+        f"was {top_code_str}, which accounted for the highest volume of events across the "
+        f"analysis period."
+    )
+    story.append(Paragraph(conclusion, body_style))
+
+    if fams and len(years) > 1:
+        # Year-over-year commentary
+        trend_comments = []
+        for fam in fams[:3]:
+            yr_vals = fam['yearly_counts']
+            if len(yr_vals) >= 2 and yr_vals[0] > 0:
+                change = (yr_vals[-1] - yr_vals[0]) / yr_vals[0] * 100
+                direction = 'increased' if change > 0 else 'decreased'
+                trend_comments.append(
+                    f"Code <b>{fam['code']}</b> ({fam['description'] or fam['code']}) "
+                    f"{direction} by <b>{abs(change):.0f}%</b> from {yr_from} to {yr_to}."
+                )
+        if trend_comments:
+            story.append(Paragraph('Year-over-year trend observations:', body_style))
+            for comment in trend_comments:
+                story.append(Paragraph(f"• {comment}", body_style))
+
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph(
+        "This report is generated from publicly available FDA MAUDE data and is intended for "
+        "signal detection and trend monitoring purposes only. It does not constitute a formal "
+        "regulatory submission or safety conclusion.",
+        note_style,
+    ))
+
+    story.append(Spacer(1, 1*cm))
+    story.append(HRFlowable(width='100%', thickness=0.5, color=colors.grey, spaceAfter=4))
+    story.append(Paragraph(
+        f"Generated by FDA MAUDE Analysis Platform · {dt.now().strftime('%d %B %Y, %H:%M UTC')}",
+        ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8,
+                       textColor=colors.grey, alignment=1),
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()

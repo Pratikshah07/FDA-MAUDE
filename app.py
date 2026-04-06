@@ -1238,6 +1238,349 @@ def api_download_code_counts_xlsx():
         return jsonify({'error': str(e)}), 400
 
 
+@app.route('/api/imdrf-insights/download-top5-grand-total-xlsx', methods=['GET'])
+@login_required
+def api_download_top5_grand_total_xlsx():
+    """Download top-5 IMDRF code families by grand total (sum of all levels) as XLSX.
+
+    If year_from and year_to are provided the sheet is split into one section
+    per calendar year, each with its own independent top-5 ranking.
+    """
+    file_id = request.args.get('file_id')
+
+    if not file_id:
+        return jsonify({'error': 'Missing file_id parameter'}), 400
+
+    try:
+        file_info = session.get(f'insights_file_{file_id}')
+        if not file_info:
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+
+        if isinstance(file_info, str):
+            file_path = file_info
+        else:
+            file_path = file_info.get('path')
+
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+
+        from backend.imdrf_insights import (
+            get_imdrf_code_counts_all_levels_with_descriptions,
+            find_manufacturer_column,
+            find_date_column,
+            parse_flexible_date,
+        )
+        from backend.parent_company_map import apply_parent_map
+        import pandas as _pd
+
+        _file_ext = os.path.splitext(file_path)[1].lower()
+        if _file_ext in ['.xlsx', '.xls']:
+            _raw_df = _pd.read_excel(file_path, dtype=str, keep_default_na=False)
+        else:
+            _raw_df = _pd.read_csv(file_path, dtype=str, encoding='utf-8',
+                                   on_bad_lines='skip', keep_default_na=False)
+        for _col in _raw_df.columns:
+            _raw_df[_col] = _raw_df[_col].astype(str).str.strip()
+            _raw_df[_col] = _raw_df[_col].replace(
+                {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+        _mfr_col = find_manufacturer_column(_raw_df)
+        if _mfr_col:
+            norm_df, _ = apply_parent_map(_raw_df, _mfr_col)
+        else:
+            norm_df = _raw_df
+
+        # ── Determine whether to do year-wise breakdown ────────────────────
+        try:
+            year_from = int(request.args.get('year_from', 0))
+            year_to   = int(request.args.get('year_to',   0))
+        except (TypeError, ValueError):
+            year_from = year_to = 0
+
+        do_yearly = (year_from > 0 and year_to > 0 and year_from <= year_to)
+
+        if do_yearly:
+            years = list(range(year_from, year_to + 1))
+            date_col = find_date_column(norm_df)
+            if date_col:
+                norm_df['_parsed_date'] = norm_df[date_col].apply(parse_flexible_date)
+        else:
+            years = [None]  # sentinel: use whole dataset
+
+        # ── Helper: compute summary counts for a given df slice ────────────
+        def _summary_for_df(slice_df):
+            return get_imdrf_code_counts_all_levels_with_descriptions(
+                file_path, DEFAULT_IMDRF_PATH, df=slice_df
+            )
+
+        # ── Helper: compute top-5 L1 codes + grand totals from summary ─────
+        def _top5(summary_counts):
+            l1 = summary_counts.get(1, {})
+            l2 = summary_counts.get(2, {})
+            l3 = summary_counts.get(3, {})
+            grand_totals = {}
+            for code in l1:
+                gt = l1[code].get('count', 0)
+                gt += sum(v.get('count', 0) for k, v in l2.items() if k[:3] == code)
+                gt += sum(v.get('count', 0) for k, v in l3.items() if k[:3] == code)
+                grand_totals[code] = gt
+            top5_l1 = sorted(grand_totals, key=lambda c: -grand_totals[c])[:5]
+            return top5_l1, grand_totals, l1, l2, l3
+
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Top 5 Code Families'
+
+        # ── Shared styles ──────────────────────────────────────────────────
+        hdr_font = Font(bold=True, color='FFFFFF')
+        hdr_fill = PatternFill(start_color='1E40AF', end_color='1E40AF', fill_type='solid')
+        fam_font = Font(bold=True, color='1E3A5F')
+        fam_fill = PatternFill(start_color='BFDBFE', end_color='BFDBFE', fill_type='solid')
+        l1_font  = Font(bold=True, color='1D4ED8')
+        l1_fill  = PatternFill(start_color='DBEAFE', end_color='DBEAFE', fill_type='solid')
+        l2_fill  = PatternFill(start_color='EFF6FF', end_color='EFF6FF', fill_type='solid')
+        l3_fill  = PatternFill(start_color='F8FAFF', end_color='F8FAFF', fill_type='solid')
+        gt_font  = Font(bold=True, color='FFFFFF')
+        gt_fill  = PatternFill(start_color='1E40AF', end_color='1E40AF', fill_type='solid')
+        # Year banner style (darker header separating each year block)
+        yr_font  = Font(bold=True, size=13, color='FFFFFF')
+        yr_fill  = PatternFill(start_color='0F172A', end_color='0F172A', fill_type='solid')
+        center   = Alignment(horizontal='center', vertical='center')
+        left     = Alignment(horizontal='left',   vertical='center')
+
+        col_headers = ['Code', 'Level', 'Description', 'Count']
+        num_cols = len(col_headers)
+
+        row = 1
+
+        for year in years:
+            # ── Filter dataframe for this year (or use whole dataset) ──────
+            if year is None:
+                slice_df = norm_df
+                year_label = None
+            elif do_yearly and date_col and '_parsed_date' in norm_df.columns:
+                mask = (
+                    (norm_df['_parsed_date'].dt.year == year) &
+                    norm_df['_parsed_date'].notna()
+                )
+                slice_df = norm_df[mask].copy()
+            else:
+                slice_df = norm_df
+                year_label = None
+
+            if year is not None:
+                year_label = str(year)
+
+            # ── Year banner ────────────────────────────────────────────────
+            if year_label:
+                ws.merge_cells(
+                    start_row=row, start_column=1,
+                    end_row=row,   end_column=num_cols
+                )
+                banner = ws.cell(row=row, column=1,
+                                 value=f'  Year: {year_label}')
+                banner.font      = yr_font
+                banner.fill      = yr_fill
+                banner.alignment = left
+                ws.row_dimensions[row].height = 22
+                row += 1
+
+            summary_counts = _summary_for_df(slice_df)
+            top5_l1, grand_totals, l1_data, l2_data, l3_data = _top5(summary_counts)
+
+            for rank, l1_code in enumerate(top5_l1, 1):
+                # ── Family header ──────────────────────────────────────
+                ws.merge_cells(
+                    start_row=row, start_column=1,
+                    end_row=row,   end_column=num_cols
+                )
+                fam_cell = ws.cell(
+                    row=row, column=1,
+                    value=f'#{rank}  Code Family: {l1_code}  —  Grand Total: {grand_totals[l1_code]}'
+                )
+                fam_cell.font      = fam_font
+                fam_cell.fill      = fam_fill
+                fam_cell.alignment = left
+                for c in range(2, num_cols + 1):
+                    ws.cell(row=row, column=c).fill = fam_fill
+                row += 1
+
+                # ── Column headers ─────────────────────────────────────
+                for ci, h in enumerate(col_headers, 1):
+                    cell = ws.cell(row=row, column=ci, value=h)
+                    cell.font      = hdr_font
+                    cell.fill      = hdr_fill
+                    cell.alignment = center
+                row += 1
+
+                grand_total = 0
+
+                # Level 1 row
+                l1_entry = l1_data.get(l1_code, {})
+                l1_count = l1_entry.get('count', 0)
+                grand_total += l1_count
+                for ci, v in enumerate([l1_code, 'Level 1', l1_entry.get('description', ''), l1_count], 1):
+                    cell = ws.cell(row=row, column=ci, value=v)
+                    cell.font = l1_font
+                    cell.fill = l1_fill
+                row += 1
+
+                # Level 2 rows
+                for l2_code in sorted(k for k in l2_data if k[:3] == l1_code):
+                    l2_entry = l2_data[l2_code]
+                    l2_count = l2_entry.get('count', 0)
+                    grand_total += l2_count
+                    for ci, v in enumerate([l2_code, 'Level 2', l2_entry.get('description', ''), l2_count], 1):
+                        ws.cell(row=row, column=ci, value=v).fill = l2_fill
+                    row += 1
+
+                # Level 3 rows
+                for l3_code in sorted(k for k in l3_data if k[:3] == l1_code):
+                    l3_entry = l3_data[l3_code]
+                    l3_count = l3_entry.get('count', 0)
+                    grand_total += l3_count
+                    for ci, v in enumerate([l3_code, 'Level 3', l3_entry.get('description', ''), l3_count], 1):
+                        ws.cell(row=row, column=ci, value=v).fill = l3_fill
+                    row += 1
+
+                # Grand Total row
+                for ci, v in enumerate(['Grand Total', '', '', grand_total], 1):
+                    cell = ws.cell(row=row, column=ci, value=v)
+                    cell.font = gt_font
+                    cell.fill = gt_fill
+                row += 2  # blank separator between families
+
+            row += 1  # extra blank line between year blocks
+
+        # Auto-fit columns
+        for col in ws.columns:
+            col_letter = get_column_letter(col[0].column)
+            max_len = max((len(str(cell.value)) for cell in col if cell.value), default=8)
+            ws.column_dimensions[col_letter].width = min(max_len + 4, 60)
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        if do_yearly:
+            dl_name = f'imdrf_top5_{year_from}_{year_to}_yearwise.xlsx'
+        else:
+            dl_name = 'imdrf_top5_grand_total.xlsx'
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=dl_name,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/imdrf-insights/top5-yearly-chart-data', methods=['GET'])
+@login_required
+def api_top5_yearly_chart_data():
+    """Return per-year grand totals for the global top-5 IMDRF code families as JSON.
+
+    Query params: file_id, year_from, year_to
+    Response: {years, families: {code: {description, counts: [...]}}}
+    """
+    file_id = request.args.get('file_id')
+    if not file_id:
+        return jsonify({'error': 'Missing file_id'}), 400
+
+    try:
+        year_from = int(request.args.get('year_from', 0))
+        year_to   = int(request.args.get('year_to',   0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid year_from / year_to'}), 400
+
+    if not (year_from > 0 and year_to > 0 and year_from <= year_to):
+        return jsonify({'error': 'Provide valid year_from and year_to'}), 400
+
+    try:
+        file_info = session.get(f'insights_file_{file_id}')
+        if not file_info:
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+        file_path = file_info if isinstance(file_info, str) else file_info.get('path')
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({'error': 'File not found. Please upload again.'}), 404
+
+        from backend.imdrf_insights import (
+            get_imdrf_code_counts_all_levels_with_descriptions,
+            find_date_column,
+            parse_flexible_date,
+            find_manufacturer_column,
+        )
+        from backend.parent_company_map import apply_parent_map
+        import pandas as _pd
+
+        _ext = os.path.splitext(file_path)[1].lower()
+        if _ext in ['.xlsx', '.xls']:
+            norm_df = _pd.read_excel(file_path, dtype=str, keep_default_na=False)
+        else:
+            norm_df = _pd.read_csv(file_path, dtype=str, encoding='utf-8',
+                                   on_bad_lines='skip', keep_default_na=False)
+        for _col in norm_df.columns:
+            norm_df[_col] = norm_df[_col].astype(str).str.strip().replace(
+                {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+        _mfr_col = find_manufacturer_column(norm_df)
+        if _mfr_col:
+            norm_df, _ = apply_parent_map(norm_df, _mfr_col)
+
+        date_col = find_date_column(norm_df)
+        if not date_col:
+            return jsonify({'error': 'No date column found in file'}), 400
+        norm_df['_parsed_date'] = norm_df[date_col].apply(parse_flexible_date)
+
+        def _grand_totals_for(slice_df):
+            counts = get_imdrf_code_counts_all_levels_with_descriptions(
+                file_path, DEFAULT_IMDRF_PATH, df=slice_df)
+            l1, l2, l3 = counts.get(1, {}), counts.get(2, {}), counts.get(3, {})
+            result = {}
+            for code, entry in l1.items():
+                gt = entry.get('count', 0)
+                gt += sum(v.get('count', 0) for k, v in l2.items() if k[:3] == code)
+                gt += sum(v.get('count', 0) for k, v in l3.items() if k[:3] == code)
+                result[code] = {'count': gt, 'description': entry.get('description', code)}
+            return result
+
+        # Determine global top 5 (across all years in range)
+        mask_all = (
+            norm_df['_parsed_date'].notna() &
+            (norm_df['_parsed_date'].dt.year >= year_from) &
+            (norm_df['_parsed_date'].dt.year <= year_to)
+        )
+        global_totals = _grand_totals_for(norm_df[mask_all])
+        top5_codes = sorted(global_totals, key=lambda c: -global_totals[c]['count'])[:5]
+
+        years = list(range(year_from, year_to + 1))
+        families = {}
+        for code in top5_codes:
+            families[code] = {
+                'description': global_totals[code]['description'],
+                'counts': []
+            }
+
+        for year in years:
+            mask = (
+                norm_df['_parsed_date'].notna() &
+                (norm_df['_parsed_date'].dt.year == year)
+            )
+            yr_totals = _grand_totals_for(norm_df[mask])
+            for code in top5_codes:
+                families[code]['counts'].append(yr_totals.get(code, {}).get('count', 0))
+
+        return jsonify({'years': years, 'families': families})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
 @app.route('/api/imdrf-insights/generate-pdf-report', methods=['POST'])
 @login_required
 def imdrf_insights_generate_pdf():
@@ -1329,6 +1672,116 @@ def imdrf_insights_generate_pdf():
             mimetype='application/pdf',
             as_attachment=True,
             download_name=filename
+        )
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _fetch_openfda_product_info(product_code: str) -> dict:
+    """Fetch device classification info for a product code from openFDA."""
+    if not product_code:
+        return {}
+    try:
+        import urllib.request, urllib.parse, json as _json
+        api_key = os.environ.get('OPENFDA_API_KEY', '')
+        params = {'search': f'product_code:{product_code}', 'limit': '1'}
+        if api_key:
+            params['api_key'] = api_key
+        url = 'https://api.fda.gov/device/classification.json?' + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={'User-Agent': 'FDA-MAUDE-App/1.0'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            payload = _json.loads(resp.read())
+        result = (payload.get('results') or [{}])[0]
+        return {
+            'product_code':                result.get('product_code', product_code),
+            'device_name':                 result.get('device_name', ''),
+            'medical_specialty':           result.get('medical_specialty_description', ''),
+            'device_class':                result.get('device_class', ''),
+            'regulation_number':           result.get('regulation_number', ''),
+            'definition':                  result.get('definition', ''),
+        }
+    except Exception:
+        return {'product_code': product_code}
+
+
+@app.route('/api/imdrf-insights/generate-detailed-report', methods=['POST'])
+@login_required
+def imdrf_insights_generate_detailed_report():
+    """Generate a PSUR-style detailed PDF report from the current period's data."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request body'}), 400
+
+    file_id      = data.get('file_id', '').strip()
+    year_from    = data.get('year_from')
+    year_to      = data.get('year_to')
+    level        = int(data.get('level', 1))
+    product_code = (data.get('product_code') or '').strip().upper()
+    date_from    = data.get('date_from', '')
+    date_to      = data.get('date_to', '')
+
+    if not file_id:
+        return jsonify({'error': 'Missing file_id'}), 400
+    try:
+        year_from = int(year_from)
+        year_to   = int(year_to)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid year_from / year_to'}), 400
+
+    file_meta = session.get(f'insights_file_{file_id}')
+    if not file_meta:
+        return jsonify({'error': 'File not found. Please reload your data.'}), 404
+    file_path = file_meta.get('path') if isinstance(file_meta, dict) else file_meta
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({'error': 'Data file not found. Please reload your data.'}), 404
+
+    # Fetch product info from openFDA (best-effort; won't block PDF if it fails)
+    product_info = _fetch_openfda_product_info(product_code)
+    product_info['date_from'] = date_from
+    product_info['date_to']   = date_to
+
+    try:
+        from backend.imdrf_insights import (
+            prepare_data_for_insights,
+            compute_detailed_report_data,
+            render_detailed_yoy_bar_chart,
+            render_detailed_total_bar_chart,
+            render_detailed_patient_problems_bar,
+            build_detailed_report_pdf,
+        )
+
+        result     = prepare_data_for_insights(file_path, level=level)
+        df_exploded = result['df_exploded']
+        mfr_col    = result.get('mfr_col') or '_manufacturer'
+
+        report_data = compute_detailed_report_data(
+            df_exploded, mfr_col, file_path, DEFAULT_IMDRF_PATH,
+            year_from, year_to, level,
+        )
+        report_data['product_info'] = product_info
+
+        if not report_data['top5_families']:
+            return jsonify({'error': 'No IMDRF A-code families found in the selected period.'}), 400
+
+        chart_images = {}
+        if len(report_data['years']) >= 1:
+            chart_images['yoy_bar']   = render_detailed_yoy_bar_chart(
+                report_data['years'], report_data['top5_families'])
+            chart_images['total_bar'] = render_detailed_total_bar_chart(
+                report_data['top5_families'])
+        if report_data['patient_problems']:
+            chart_images['patient_problems_bar'] = render_detailed_patient_problems_bar(
+                report_data['patient_problems'])
+
+        pdf_bytes = build_detailed_report_pdf(report_data, chart_images)
+
+        filename = f"IMDRF_Detailed_Report_{year_from}_{year_to}.pdf"
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename,
         )
 
     except Exception as e:
@@ -1449,11 +1902,7 @@ def _build_product_code_query(field_or_fields, code_value: str) -> str:
 
 
 def _month_windows(start_str, end_str):
-    """Yield (month_start, month_end) date string pairs covering [start_str, end_str].
-
-    Splits the range into calendar-month chunks so each window stays well below
-    the openFDA max-skip=25000 cap (~26,000 records per query).
-    """
+    """Yield (month_start, month_end) date string pairs covering [start_str, end_str]."""
     from calendar import monthrange as _monthrange
     start = datetime.strptime(start_str, '%Y-%m-%d').date()
     end   = datetime.strptime(end_str,   '%Y-%m-%d').date()
@@ -1467,6 +1916,47 @@ def _month_windows(start_str, end_str):
             cur = cur.replace(year=cur.year + 1, month=1)
         else:
             cur = cur.replace(month=cur.month + 1)
+
+
+# Records per year above this threshold trigger monthly sub-windows.
+# The openFDA hard cap is ~26,000 (max_skip=25000 + limit=1000).
+# 20,000 gives a comfortable margin for high-volume device codes.
+_OPENFDA_CAP_THRESHOLD = 20_000
+
+
+def _adaptive_windows(probe, date_from, date_to):
+    """Yield window probes that stay below the openFDA 26K record cap.
+
+    Strategy:
+      1. Try a year-level window first (1 API call per year).
+      2. If that year's total > _OPENFDA_CAP_THRESHOLD, discard it and fall back
+         to monthly sub-windows for that year only.
+      3. Years under the threshold are yielded directly — no extra calls needed.
+
+    This keeps fetch speed close to the original year-level approach for typical
+    device codes while still protecting high-volume codes from silent truncation.
+    """
+    start = datetime.strptime(date_from, '%Y-%m-%d').date()
+    end   = datetime.strptime(date_to,   '%Y-%m-%d').date()
+
+    for yr in range(start.year, end.year + 1):
+        y_start = date_from if yr == start.year else f'{yr}-01-01'
+        y_end   = date_to   if yr == end.year   else f'{yr}-12-31'
+
+        year_probe = _make_year_probe(probe, y_start, y_end)
+        if year_probe is None:
+            continue  # no data for this year
+
+        total = year_probe.get('total_results') or 0
+        if total <= _OPENFDA_CAP_THRESHOLD:
+            # Well under the cap — yield the already-probed year window directly
+            yield year_probe
+        else:
+            # High-volume year: split into monthly windows to avoid truncation
+            for m_start, m_end in _month_windows(y_start, y_end):
+                month_probe = _make_year_probe(probe, m_start, m_end)
+                if month_probe is not None:
+                    yield month_probe
 
 
 def _parse_openfda_date(value):
@@ -2016,17 +2506,16 @@ def _maude_build_row(record, selected_code):
 
 
 def _maude_generate_csv_windowed(probe, date_from, date_to, progress_callback=None):
-    """Generator that yields CSV bytes using monthly windows to bypass the openFDA
-    max-skip=25000 cap.  Each month is fetched independently so high-volume device
-    codes (which can exceed 26,000 records/year) are fully retrieved.
+    """Generator that yields CSV bytes using adaptive windows to bypass the openFDA
+    max-skip=25000 cap while staying fast for typical device codes.
+
+    Uses year-level windows by default; only splits into monthly sub-windows for
+    years where the record count exceeds _OPENFDA_CAP_THRESHOLD.
     """
     header_written = False
     cumulative_processed = 0
-    for w_start, w_end in _month_windows(date_from, date_to):
-        win_probe = _make_year_probe(probe, w_start, w_end)
-        if win_probe is None:
-            continue
-        win_base = cumulative_processed  # capture for closure
+    for win_probe in _adaptive_windows(probe, date_from, date_to):
+        win_base = cumulative_processed
 
         def _win_cb(count, scanned, _base=win_base):
             if progress_callback:
@@ -2493,32 +2982,12 @@ def api_pipeline_start():
 
             step1_dest = final_path if pipeline_type == 'raw' else raw_path
 
-            # Split the full date range into monthly windows to avoid the
-            # openFDA max-skip=25000 cap (which caps total records at ~26,000
-            # per query). High-volume device codes (e.g. knee implants) can
-            # easily exceed 26,000 records in a single year, causing records
-            # from later months to be silently dropped with year-level windows.
-            # Monthly windows keep each fetch well below the cap.
+            # Use adaptive windowing: year-level by default, monthly only for
+            # years exceeding _OPENFDA_CAP_THRESHOLD records (see _adaptive_windows).
             with open(step1_dest, 'wb') as f:
-                header_written = False
-                cumulative_processed = 0
-                for w_start, w_end in _month_windows(date_from, date_to):
-                    win_probe = _make_year_probe(probe, w_start, w_end)
-                    if win_probe is None:
-                        continue  # no data for this month — skip
-                    win_processed = cumulative_processed  # capture for closure
-
-                    def _win_progress(count, scanned_count, _base=win_processed):
-                        dl_progress(_base + count, scanned_count)
-
-                    for chunk_idx, chunk in enumerate(_maude_generate_csv(win_probe, progress_callback=_win_progress)):
-                        if chunk_idx == 0 and header_written:
-                            # Skip the CSV header for every window after the first
-                            continue
-                        f.write(chunk)
-                        if chunk_idx == 0:
-                            header_written = True
-                    cumulative_processed += win_probe.get('total_results', 0)
+                for chunk in _maude_generate_csv_windowed(probe, date_from, date_to,
+                                                          progress_callback=dl_progress):
+                    f.write(chunk)
 
             # Keep raw file as a secondary output if it was explicitly requested
             if pipeline_type != 'raw' and 'raw' in requested_outputs:

@@ -931,6 +931,9 @@
                     <button type="button" class="analyze-btn show" id="downloadCountsAllBtn">
                         <i class="fas fa-file-excel"></i> Download IMDRF Code Counts (All Levels)
                     </button>
+                    <button type="button" class="analyze-btn show" id="downloadTop5GrandTotalBtn" style="margin-top: 8px;">
+                        <i class="fas fa-trophy"></i> Download Top 5 Code Families (Grand Total Report)
+                    </button>
                 </div>
 
                 <div class="section-divider"><i class="fas fa-layer-group"></i> IMDRF Analysis Level</div>
@@ -1012,11 +1015,20 @@
                     <i class="fas fa-ranking-star"></i>
                     Top 5 Frequent Codes
                 </h3>
-                <button class="analyze-btn show" id="topCodesBtn" style="margin-bottom: 16px;">
-                    <i class="fas fa-bolt"></i> Generate Top 5 Chart
-                </button>
+                <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+                    <button class="analyze-btn show" id="topCodesBtn" style="margin:0; flex:1; min-width:180px;">
+                        <i class="fas fa-bolt"></i> Generate Top 5 Chart
+                    </button>
+                    <button class="analyze-btn show" id="trendChartBtn" style="margin:0; flex:1; min-width:180px; background:linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%); display:none;">
+                        <i class="fas fa-chart-line"></i> Year-over-Year Trend
+                    </button>
+                </div>
                 <div class="chart-container">
                     <div id="topCodesChart"></div>
+                </div>
+                <div class="chart-container" id="trendChartContainer" style="display:none; margin-top:16px;">
+                    <div id="trendChartStatus" style="padding:12px; color:var(--text-secondary); font-size:0.88rem; display:none;"></div>
+                    <div id="trendChart"></div>
                 </div>
             </div>
 
@@ -1224,70 +1236,37 @@
             </div>
         </div>
 
-        <!-- ── PDF Report Card ──────────────────────────────────── -->
+        <!-- ── Detailed Report Card ──────────────────────────────── -->
         <div class="report-card" id="reportCard" style="display: none;">
             <h2 class="section-title">
                 <i class="fas fa-file-pdf" style="color:#dc2626;"></i>
-                Generate IMDRF Trend Report
+                Generate Detailed Report
             </h2>
             <p style="color:var(--text-secondary); margin-bottom:20px; font-size:0.93rem;">
-                Select a manufacturer and code to generate a downloadable PDF report with historical baseline
-                and trend charts. Historical data (preceding 2 years) will be auto-fetched from FDA MAUDE.
+                Generate a comprehensive PSUR-style PDF report using the data already fetched above.
+                The report includes top IMDRF code families, year-over-year trends, top manufacturers,
+                patient problems, and event outcome classifications.
             </p>
 
-            <div class="report-inputs-grid">
-                <div class="form-group">
-                    <label><i class="fas fa-barcode"></i> Product Code</label>
-                    <input type="text" id="reportProductCode" placeholder="e.g., FRY">
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-industry"></i> Manufacturer</label>
-                    <select id="reportManufacturer">
-                        <option value="">Select manufacturer…</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-code"></i> Event Code</label>
-                    <select id="reportEventCode">
-                        <option value="ALL">ALL (Top 5 codes)</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-calendar-alt"></i> Period From</label>
-                    <input type="date" id="reportPeriodFrom">
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-calendar-alt"></i> Period To</label>
-                    <input type="date" id="reportPeriodTo">
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-layer-group"></i> Frequency</label>
-                    <select id="reportGrain">
-                        <option value="M">Monthly</option>
-                        <option value="Q">Quarterly</option>
-                    </select>
-                </div>
-            </div>
-
             <button class="analyze-btn show" id="generateReportBtn" style="margin-bottom:20px;">
-                <i class="fas fa-file-pdf"></i> Generate PDF Report
+                <i class="fas fa-file-pdf"></i> Generate Detailed Report
             </button>
 
             <div id="reportProgress" style="display:none;">
                 <div class="fetch-progress-bar">
                     <div class="fp-step" id="rStep1">
-                        <div class="fp-step-icon"><i class="fas fa-cloud-download-alt"></i></div>
-                        <div class="fp-step-label">Fetching Historical Data</div>
+                        <div class="fp-step-icon"><i class="fas fa-cogs"></i></div>
+                        <div class="fp-step-label">Preparing Data</div>
                     </div>
                     <div class="fp-connector" id="rConn1"></div>
                     <div class="fp-step" id="rStep2">
-                        <div class="fp-step-icon"><i class="fas fa-cogs"></i></div>
-                        <div class="fp-step-label">Preparing Data</div>
+                        <div class="fp-step-icon"><i class="fas fa-chart-bar"></i></div>
+                        <div class="fp-step-label">Building Charts</div>
                     </div>
                     <div class="fp-connector" id="rConn2"></div>
                     <div class="fp-step" id="rStep3">
                         <div class="fp-step-icon"><i class="fas fa-file-pdf"></i></div>
-                        <div class="fp-step-label">Building PDF</div>
+                        <div class="fp-step-label">Generating PDF</div>
                     </div>
                 </div>
                 <div id="reportStatusMsg" class="status info show" style="margin-top:12px;"></div>
@@ -1492,6 +1471,12 @@
             });
             downloadCountsTop.style.display = 'block';
             topCodesSection.style.display = 'block';
+            // Show trend button only when a multi-year range is fetched
+            document.getElementById('trendChartBtn').style.display =
+                (_fetchedYearFrom && _fetchedYearTo && _fetchedYearTo > _fetchedYearFrom) ? 'block' : 'none';
+            // Reset trend chart when re-fetching
+            document.getElementById('trendChartContainer').style.display = 'none';
+            document.getElementById('trendChart').innerHTML = '';
             setFetchStep(3, 'done');
             showStatus(`✅ Ready — ${data.rows_with_dates.toLocaleString()} rows with valid dates, ${data.all_prefixes.length} codes found at ${data.level_label || 'Level-' + currentLevel}`, 'success');
 
@@ -1500,6 +1485,7 @@
             const currentTbody = document.getElementById('currentCodeTableBody');
             const prefixCountsAll = data.prefix_counts || {};
             const sortedCodes = Object.entries(prefixCountsAll)
+                .filter(([code]) => !code.toUpperCase().startsWith('E'))
                 .sort((a, b) => b[1] - a[1]);
             const totalCurrentEvents = sortedCodes.reduce((s, e) => s + e[1], 0);
             if (sortedCodes.length > 0) {
@@ -1532,27 +1518,8 @@
                 currentSec.style.display = 'none';
             }
 
-            // Populate report card dropdowns
+            // Show report card
             document.getElementById('reportCard').style.display = 'block';
-            const rpMfr = document.getElementById('reportManufacturer');
-            rpMfr.innerHTML = '<option value="">Select manufacturer…</option>';
-            (data.all_manufacturers || []).forEach(m => {
-                const o = document.createElement('option');
-                o.value = m; o.textContent = m;
-                rpMfr.appendChild(o);
-            });
-            const rpCode = document.getElementById('reportEventCode');
-            rpCode.innerHTML = '<option value="ALL">ALL (Top 5 codes)</option>';
-            (data.all_prefixes || []).forEach(c => {
-                const o = document.createElement('option');
-                o.value = c; o.textContent = c;
-                rpCode.appendChild(o);
-            });
-            // Pre-fill product code if fetch tab was used
-            const fetchProdCode = document.getElementById('insightProductCode');
-            if (fetchProdCode && fetchProdCode.value) {
-                document.getElementById('reportProductCode').value = fetchProdCode.value;
-            }
         }
 
         // ── Fetch button ─────────────────────────────────────────────────
@@ -1977,6 +1944,18 @@
             window.location.href = url;
         });
 
+        document.getElementById('downloadTop5GrandTotalBtn').addEventListener('click', () => {
+            if (!preparedData || !preparedData.file_id) {
+                showStatus('❌ Please fetch data first', 'error');
+                return;
+            }
+            let url = `/api/imdrf-insights/download-top5-grand-total-xlsx?file_id=${preparedData.file_id}`;
+            if (_fetchedYearFrom && _fetchedYearTo) {
+                url += `&year_from=${_fetchedYearFrom}&year_to=${_fetchedYearTo}`;
+            }
+            window.location.href = url;
+        });
+
         topCodesBtn.addEventListener('click', () => {
             if (!preparedData) {
                 showStatus('❌ Please fetch data first', 'error');
@@ -2012,6 +1991,65 @@
             };
 
             Plotly.newPlot('topCodesChart', [trace], layout, {responsive: true});
+        });
+
+        // ── Year-over-Year Trend Chart ────────────────────────────────────
+        const trendChartBtn = document.getElementById('trendChartBtn');
+        const trendChartContainer = document.getElementById('trendChartContainer');
+        const trendChartStatus = document.getElementById('trendChartStatus');
+
+        trendChartBtn.addEventListener('click', async () => {
+            if (!preparedData) {
+                showStatus('❌ Please fetch data first', 'error');
+                return;
+            }
+            if (!_fetchedYearFrom || !_fetchedYearTo) {
+                showStatus('❌ No year range available — please fetch with a year range selected', 'error');
+                return;
+            }
+
+            trendChartContainer.style.display = 'block';
+            trendChartStatus.style.display = 'block';
+            trendChartStatus.textContent = '⏳ Computing year-over-year grand totals…';
+            document.getElementById('trendChart').innerHTML = '';
+            trendChartBtn.disabled = true;
+
+            try {
+                const url = `/api/imdrf-insights/top5-yearly-chart-data?file_id=${preparedData.file_id}&year_from=${_fetchedYearFrom}&year_to=${_fetchedYearTo}`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (!resp.ok || data.error) {
+                    trendChartStatus.textContent = `❌ ${data.error || 'Failed to load chart data'}`;
+                    return;
+                }
+
+                trendChartStatus.style.display = 'none';
+
+                const palette = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed'];
+                const traces = Object.entries(data.families).map(([code, fam], i) => ({
+                    x: data.years.map(String),
+                    y: fam.counts,
+                    type: 'bar',
+                    name: `${code} — ${fam.description}`,
+                    marker: {color: palette[i % palette.length]}
+                }));
+
+                const layout = {
+                    title: `Top 5 Code Families — Grand Total by Year (${_fetchedYearFrom}–${_fetchedYearTo})`,
+                    barmode: 'group',
+                    xaxis: {title: 'Year', type: 'category'},
+                    yaxis: {title: 'Grand Total Count'},
+                    legend: {orientation: 'h', y: -0.25},
+                    height: 450,
+                    margin: {b: 120}
+                };
+
+                Plotly.newPlot('trendChart', traces, layout, {responsive: true});
+            } catch (err) {
+                trendChartStatus.textContent = `❌ Error: ${err.message}`;
+            } finally {
+                trendChartBtn.disabled = false;
+            }
         });
 
         // ── When code changes: populate manufacturer dropdown ────────────
@@ -2480,17 +2518,14 @@
         }
 
         document.getElementById('generateReportBtn').addEventListener('click', async () => {
-            const productCode  = document.getElementById('reportProductCode').value.trim();
-            const manufacturer = document.getElementById('reportManufacturer').value;
-            const eventCode    = document.getElementById('reportEventCode').value || 'ALL';
-            const periodFrom   = document.getElementById('reportPeriodFrom').value;
-            const periodTo     = document.getElementById('reportPeriodTo').value;
-            const grain        = document.getElementById('reportGrain').value;
-
-            if (!productCode) { showStatus('❌ Product code is required for historical data fetch', 'error'); return; }
-            if (!manufacturer) { showStatus('❌ Please select a manufacturer', 'error'); return; }
-            if (!periodFrom || !periodTo) { showStatus('❌ Please enter both period dates', 'error'); return; }
-            if (new Date(periodTo) <= new Date(periodFrom)) { showStatus('❌ Period To must be after Period From', 'error'); return; }
+            if (!preparedData || !preparedData.file_id) {
+                showStatus('❌ Please fetch and prepare IMDRF data first (Step 1 above).', 'error');
+                return;
+            }
+            if (!_fetchedYearFrom || !_fetchedYearTo) {
+                showStatus('❌ Year range not available. Please re-fetch the data first.', 'error');
+                return;
+            }
 
             const genBtn = document.getElementById('generateReportBtn');
             genBtn.disabled = true;
@@ -2498,7 +2533,7 @@
             document.getElementById('reportProgress').style.display = 'block';
             const rMsg = document.getElementById('reportStatusMsg');
             rMsg.className = 'status info show';
-            rMsg.textContent = 'Starting historical data fetch…';
+            rMsg.textContent = 'Preparing report data…';
             [1, 2, 3].forEach(s => setReportStep(s, 'pending'));
             ['rConn1', 'rConn2'].forEach(id => {
                 const e = document.getElementById(id);
@@ -2506,59 +2541,33 @@
             });
 
             try {
-                // ── Step 1: Fetch 2-year historical data ──────────────────
+                // ── Step 1: Validate data ──────────────────────────────────
                 setReportStep(1, 'active');
-                const histFrom = subtractTwoYears(periodFrom);
-                const histTo   = periodFrom;  // YYYY-MM-DD — same format the pipeline expects
-                rMsg.textContent = `Fetching historical data (${histFrom} → ${histTo})…`;
-
-                const startResp = await fetch('/api/pipeline/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        product_code: productCode,
-                        date_from: histFrom,
-                        date_to: histTo,
-                        pipeline_type: 'clean'
-                    })
-                });
-                const startData = await parseJsonResponse(startResp);
-                if (!startResp.ok) throw new Error(startData.error || 'Failed to start historical fetch');
-                const histJobId = startData.job_id;
-
-                await pollPipelineUntilDone(histJobId);
+                rMsg.textContent = `Using fetched data: ${_fetchedYearFrom}–${_fetchedYearTo}…`;
+                await new Promise(r => setTimeout(r, 300));
                 setReportStep(1, 'done');
 
-                // ── Step 2: Prepare historical IMDRF insights ─────────────
+                // ── Step 2: Signal chart building ─────────────────────────
                 setReportStep(2, 'active');
-                rMsg.textContent = 'Preparing historical IMDRF codes…';
-
-                const prepResp = await fetch('/api/imdrf-insights/prepare-from-pipeline', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ job_id: histJobId, level: currentLevel })
-                });
-                const histData = await parseJsonResponse(prepResp);
-                if (!prepResp.ok) throw new Error(histData.error || 'Historical data preparation failed');
-                reportHistFileId = histData.file_id;  // cache for proportion calculations
+                rMsg.textContent = 'Building charts and computing statistics…';
+                await new Promise(r => setTimeout(r, 200));
                 setReportStep(2, 'done');
 
                 // ── Step 3: Generate PDF ───────────────────────────────────
                 setReportStep(3, 'active');
-                rMsg.textContent = 'Building PDF report (this may take ~15 seconds)…';
+                rMsg.textContent = 'Generating PDF report (this may take ~20 seconds)…';
 
-                const pdfResp = await fetch('/api/imdrf-insights/generate-pdf-report', {
+                const pdfResp = await fetch('/api/imdrf-insights/generate-detailed-report', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         file_id:      preparedData.file_id,
-                        hist_file_id: histData.file_id,
-                        manufacturer,
-                        code:         eventCode,
-                        period_from:  periodFrom,
-                        period_to:    periodTo,
-                        grain,
-                        level:        currentLevel
+                        year_from:    _fetchedYearFrom,
+                        year_to:      _fetchedYearTo,
+                        level:        currentLevel,
+                        product_code: insightProductCode.value.trim().toUpperCase(),
+                        date_from:    `${_fetchedYearFrom}-01-01`,
+                        date_to:      `${_fetchedYearTo}-12-31`,
                     })
                 });
 
@@ -2569,11 +2578,10 @@
                 }
 
                 const blob = await pdfResp.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement('a');
                 a.href = url;
-                const safeMfr = manufacturer.replace(/[^A-Za-z0-9]/g, '_').slice(0, 30);
-                a.download = `IMDRF_Report_${safeMfr}_${periodFrom}_${periodTo}.pdf`;
+                a.download = `IMDRF_Detailed_Report_${_fetchedYearFrom}_${_fetchedYearTo}.pdf`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -2581,25 +2589,15 @@
 
                 setReportStep(3, 'done');
                 rMsg.className = 'status success show';
-                rMsg.textContent = '✅ Report downloaded successfully!';
+                rMsg.textContent = '✅ Detailed report downloaded successfully!';
 
             } catch (err) {
                 rMsg.className = 'status error show';
                 rMsg.textContent = `❌ ${err.message}`;
             } finally {
                 genBtn.disabled = false;
-                genBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate PDF Report';
+                genBtn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate Detailed Report';
             }
-        });
-
-        // ── Invalidate cached hist data when key inputs change ────────────
-        ['reportProductCode', 'reportPeriodFrom'].forEach(id => {
-            document.getElementById(id).addEventListener('change', () => {
-                reportHistFileId = null;
-            });
-        });
-        document.getElementById('reportProductCode').addEventListener('input', () => {
-            reportHistFileId = null;
         });
 
     </script>
