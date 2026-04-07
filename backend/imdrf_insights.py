@@ -2219,7 +2219,7 @@ def build_detailed_report_pdf(report_data, chart_images):
 
     # ── Cover Page ────────────────────────────────────────────────────────────
     story.append(Spacer(1, 1.5*cm))
-    story.append(Paragraph('FDA MAUDE — IMDRF Code Analysis Report', title_style))
+    story.append(Paragraph('FDA MAUDE — Analysis Report', title_style))
     story.append(Paragraph(
         f"Generated: <b>{dt.now().strftime('%d %B %Y')}</b>",
         sub_style,
