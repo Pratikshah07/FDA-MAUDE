@@ -2053,9 +2053,18 @@ def _openfda_get(url: str, params: dict = None, max_retries: int = 4, timeout=(5
     working), transparently retries without the key so anonymous calls still succeed.
     """
     api_key = os.getenv('OPENFDA_API_KEY', '').strip()
-    # Inject key if available and not already present
-    if api_key and params and 'api_key' not in params:
-        params = {**params, 'api_key': api_key}
+    # Inject key if available and not already present.
+    # Must handle both params-dict callers AND callers that pass a fully-built URL
+    # with params=None (e.g. pagination via Link header or constructed skip URLs).
+    # Without this, paginated follow-up calls go anonymous and openFDA returns
+    # API_KEY_MISSING (403), silently truncating fetches at the first 1000 rows.
+    if api_key:
+        if params is not None:
+            if 'api_key' not in params:
+                params = {**params, 'api_key': api_key}
+        elif 'api_key=' not in url:
+            sep = '&' if '?' in url else '?'
+            url = f'{url}{sep}api_key={api_key}'
 
     for attempt in range(max_retries + 1):
         try:
@@ -2611,9 +2620,20 @@ def _maude_generate_csv(probe, progress_callback=None):
             break
 
         try:
-            response = _openfda_get(current_next, params=None)
+            response = _openfda_get(current_next, params=None, allow_not_found=True, allow_bad_request=True)
             payload = response.json()
-        except Exception:
+        except Exception as exc:
+            app.logger.warning('MAUDE pagination request failed: %s', exc)
+            break
+
+        if response.status_code >= 400:
+            # 404 from openFDA simply means no more results in this window — clean stop.
+            # Other errors (403 API_KEY_MISSING, 429, 5xx) indicate truncation; log loudly.
+            if response.status_code != 404:
+                app.logger.error(
+                    'MAUDE pagination stopped early: HTTP %s from %s — body=%s',
+                    response.status_code, current_next, str(payload)[:300]
+                )
             break
 
         current_results = payload.get('results', [])
