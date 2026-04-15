@@ -1840,18 +1840,23 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
     l2_descs = descs.get(2, {})
     l3_descs = descs.get(3, {})
 
-    # ── Load raw file + get all-level counts for hierarchy breakdown ───────────
-    # get_imdrf_code_counts_all_levels uses exact-length matching (3/5/7 chars),
-    # so each event is counted at exactly one level — no double-counting.
-    # Grand total per family = L1_direct + L2_direct + L3_direct counts.
+    # ── Family grand totals — computed from df_exploded to stay consistent
+    # with total_events and yearly_counts used in the chart/conclusion.
+    # Percentages derived from this will be comparable and sum to ≤100%.
     raw_df = pd.DataFrame()
     l1_all: dict = {}
     l2_all: dict = {}
     l3_all: dict = {}
     patient_problems: dict = {}
     event_type_counts: dict = {}
-    family_grand_totals: dict = {}
 
+    family_grand_totals: dict = {
+        str(k): int(v) for k, v in df['_l1'].value_counts().items()
+        if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
+    }
+
+    # L1/L2/L3 hierarchy breakdowns still sourced from the cleaned file
+    # (those only drive per-family sub-tables, not headline percentages).
     try:
         raw_df = _load_cleaned_dataframe(file_path)
         date_col_raw = find_date_column(raw_df)
@@ -1863,21 +1868,10 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
                 (raw_df['_pd'].dt.year <= year_to)
             ].copy()
 
-        # All-level counts on the year-filtered raw data
         _all_counts = get_imdrf_code_counts_all_levels(file_path=None, df=raw_df)
         l1_all = _all_counts.get(1, {})
         l2_all = _all_counts.get(2, {})
         l3_all = _all_counts.get(3, {})
-
-        # Compute grand total per L1 family (L1_direct + L2_direct + L3_direct)
-        all_families = set()
-        for _c in list(l1_all) + list(l2_all) + list(l3_all):
-            all_families.add(_c[:3].upper())
-        for _fam in all_families:
-            _gt = l1_all.get(_fam, 0)
-            _gt += sum(v for k, v in l2_all.items() if k[:3] == _fam)
-            _gt += sum(v for k, v in l3_all.items() if k[:3] == _fam)
-            family_grand_totals[_fam] = _gt
 
         try:
             patient_problems = get_patient_problem_counts(file_path=None, df=raw_df)
@@ -2554,17 +2548,35 @@ def build_detailed_report_pdf(report_data, chart_images):
     story.append(Paragraph(conclusion, body_style))
 
     if fams and len(years) > 1:
-        # Year-over-year commentary
+        # Year-over-year commentary — report endpoint change and flag peak
+        # years when the trend isn't monotonic (otherwise the headline
+        # % hides the real shape of the data).
         trend_comments = []
         for fam in fams[:3]:
             yr_vals = fam['yearly_counts']
-            if len(yr_vals) >= 2 and yr_vals[0] > 0:
-                change = (yr_vals[-1] - yr_vals[0]) / yr_vals[0] * 100
-                direction = 'increased' if change > 0 else 'decreased'
-                trend_comments.append(
-                    f"Code <b>{fam['code']}</b> ({fam['description'] or fam['code']}) "
-                    f"{direction} by <b>{abs(change):.0f}%</b> from {yr_from} to {yr_to}."
+            if len(yr_vals) < 2 or yr_vals[0] <= 0:
+                continue
+            change = (yr_vals[-1] - yr_vals[0]) / yr_vals[0] * 100
+            direction = 'increased' if change > 0 else 'decreased'
+            peak_idx = max(range(len(yr_vals)), key=lambda i: yr_vals[i])
+            peak_val = yr_vals[peak_idx]
+            peak_year = years[peak_idx]
+            peak_note = ''
+            # Non-monotonic: peak is at an interior year AND materially larger
+            # than both endpoints (>20% above the higher endpoint).
+            endpoints_max = max(yr_vals[0], yr_vals[-1])
+            if (peak_idx not in (0, len(yr_vals) - 1)
+                    and endpoints_max > 0
+                    and peak_val > endpoints_max * 1.2):
+                peak_note = (
+                    f" Activity peaked in <b>{peak_year}</b> at "
+                    f"<b>{peak_val:,}</b> events before declining."
                 )
+            trend_comments.append(
+                f"Code <b>{fam['code']}</b> ({fam['description'] or fam['code']}) "
+                f"{direction} by <b>{abs(change):.0f}%</b> from {yr_from} to {yr_to} "
+                f"({yr_vals[0]:,} → {yr_vals[-1]:,} events).{peak_note}"
+            )
         if trend_comments:
             story.append(Paragraph('Year-over-year trend observations:', body_style))
             for comment in trend_comments:
