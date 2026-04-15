@@ -1840,13 +1840,12 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
     l2_descs = descs.get(2, {})
     l3_descs = descs.get(3, {})
 
-    # ── Family grand totals — computed from df_exploded to stay consistent
-    # with total_events and yearly_counts used in the chart/conclusion.
-    # Percentages derived from this will be comparable and sum to ≤100%.
+    # ── Family grand totals and L1/L2/L3 hierarchy — computed from
+    # df_exploded so the table, chart, hierarchy breakdown, and Grand
+    # Totals all share one consistent row basis. The cleaned XLSX has
+    # been exploded twice (device × patient problem) which inflates
+    # counts when used directly (e.g. A0501=32 vs family total=3).
     raw_df = pd.DataFrame()
-    l1_all: dict = {}
-    l2_all: dict = {}
-    l3_all: dict = {}
     patient_problems: dict = {}
     event_type_counts: dict = {}
 
@@ -1855,8 +1854,28 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
         if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
     }
 
-    # L1/L2/L3 hierarchy breakdowns still sourced from the cleaned file
-    # (those only drive per-family sub-tables, not headline percentages).
+    # Exact-length matching on the IMDRF code so each event is counted
+    # at its true granularity exactly once (3/5/7 chars).
+    _prefix_upper = df['imdrf_prefix'].astype(str).str.upper()
+    _plen = _prefix_upper.str.len()
+    l1_all: dict = {
+        str(k): int(v)
+        for k, v in _prefix_upper[_plen == 3].value_counts().items()
+        if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
+    }
+    l2_all: dict = {
+        str(k): int(v)
+        for k, v in _prefix_upper[_plen == 5].value_counts().items()
+        if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
+    }
+    l3_all: dict = {
+        str(k): int(v)
+        for k, v in _prefix_upper[_plen == 7].value_counts().items()
+        if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
+    }
+
+    # Patient problems and event-type counts still come from the cleaned
+    # file (independent columns, unaffected by the device-problem explode).
     try:
         raw_df = _load_cleaned_dataframe(file_path)
         date_col_raw = find_date_column(raw_df)
@@ -1867,11 +1886,6 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
                 (raw_df['_pd'].dt.year >= year_from) &
                 (raw_df['_pd'].dt.year <= year_to)
             ].copy()
-
-        _all_counts = get_imdrf_code_counts_all_levels(file_path=None, df=raw_df)
-        l1_all = _all_counts.get(1, {})
-        l2_all = _all_counts.get(2, {})
-        l3_all = _all_counts.get(3, {})
 
         try:
             patient_problems = get_patient_problem_counts(file_path=None, df=raw_df)
