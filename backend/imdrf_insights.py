@@ -1840,42 +1840,26 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
     l2_descs = descs.get(2, {})
     l3_descs = descs.get(3, {})
 
-    # ── Family grand totals and L1/L2/L3 hierarchy — computed from
-    # df_exploded so the table, chart, hierarchy breakdown, and Grand
-    # Totals all share one consistent row basis. The cleaned XLSX has
-    # been exploded twice (device × patient problem) which inflates
-    # counts when used directly (e.g. A0501=32 vs family total=3).
+    # ── Family grand totals and L1/L2/L3 hierarchy ────────────────────────
+    # The cleaned XLSX is doubly-exploded (device problem × patient problem),
+    # so raw counts on it inflate every figure. We dedupe by Report Number
+    # first to recover one row per actual MAUDE event, then extract codes
+    # at each level from the original pipe-separated IMDRF Code column.
+    # This both fixes the Grand Total (sum-of-rows ≤ family total because
+    # L2/L3 are sub-views of L1) and restores L2/L3 hierarchy visibility.
     raw_df = pd.DataFrame()
+    raw_dedup = pd.DataFrame()
     patient_problems: dict = {}
     event_type_counts: dict = {}
+    l1_all: dict = {}
+    l2_all: dict = {}
+    l3_all: dict = {}
 
     family_grand_totals: dict = {
         str(k): int(v) for k, v in df['_l1'].value_counts().items()
         if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
     }
 
-    # Exact-length matching on the IMDRF code so each event is counted
-    # at its true granularity exactly once (3/5/7 chars).
-    _prefix_upper = df['imdrf_prefix'].astype(str).str.upper()
-    _plen = _prefix_upper.str.len()
-    l1_all: dict = {
-        str(k): int(v)
-        for k, v in _prefix_upper[_plen == 3].value_counts().items()
-        if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
-    }
-    l2_all: dict = {
-        str(k): int(v)
-        for k, v in _prefix_upper[_plen == 5].value_counts().items()
-        if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
-    }
-    l3_all: dict = {
-        str(k): int(v)
-        for k, v in _prefix_upper[_plen == 7].value_counts().items()
-        if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
-    }
-
-    # Patient problems and event-type counts still come from the cleaned
-    # file (independent columns, unaffected by the device-problem explode).
     try:
         raw_df = _load_cleaned_dataframe(file_path)
         date_col_raw = find_date_column(raw_df)
@@ -1887,15 +1871,41 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
                 (raw_df['_pd'].dt.year <= year_to)
             ].copy()
 
+        # Locate a Report Number column to dedupe on (column names vary by
+        # source: "Report Number", "report_number", "MDR Report Key", etc.).
+        report_col = None
+        for _c in raw_df.columns:
+            _cn = str(_c).strip().lower().replace('_', ' ')
+            if _cn in ('report number', 'mdr report key', 'mdr_report_key', 'reportnumber'):
+                report_col = _c
+                break
+        if report_col is not None:
+            raw_dedup = raw_df.drop_duplicates(subset=[report_col]).copy()
+        else:
+            # Fallback: dedupe on (IMDRF Code + date_col) which keeps one row
+            # per (event, code-set) pair — still removes patient-problem dupes.
+            _imdrf_c = find_imdrf_column(raw_df)
+            _key_cols = [c for c in [_imdrf_c, date_col_raw] if c]
+            raw_dedup = raw_df.drop_duplicates(subset=_key_cols).copy() if _key_cols else raw_df.copy()
+
+        _all_counts = get_imdrf_code_counts_all_levels(file_path=None, df=raw_dedup)
+        l1_all = _all_counts.get(1, {})
+        l2_all = _all_counts.get(2, {})
+        l3_all = _all_counts.get(3, {})
+
+        # Patient problems still come from the doubly-exploded raw_df —
+        # each (event × patient problem) row is the correct unit of count
+        # for the patient-problem distribution.
         try:
             patient_problems = get_patient_problem_counts(file_path=None, df=raw_df)
         except Exception:
             pass
-        for _col in raw_df.columns:
+        # Event-type counts use the deduped frame so each event counts once.
+        for _col in raw_dedup.columns:
             if _col.strip().lower() in ('event type', 'event_type'):
                 event_type_counts = {
                     str(k): int(v)
-                    for k, v in raw_df[_col].value_counts().items()
+                    for k, v in raw_dedup[_col].value_counts().items()
                     if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
                 }
                 break
@@ -1979,12 +1989,17 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
                 'total': l3_all[l3c],
             })
 
-        grand_total = family_grand_totals.get(code, sum(r['total'] for r in full_hierarchy))
+        # Grand Total = sum of displayed rows so the table is internally
+        # self-consistent (user-visible sanity check). Note: this can exceed
+        # family_grand_totals[code] when an event lists both an L1 code and
+        # its L2/L3 descendants in the same IMDRF Code field.
+        grand_total = sum(r['total'] for r in full_hierarchy)
 
         top5_families.append({
             'code': code,
             'description': str(l1_descs.get(code, '')),
             'grand_total': grand_total,
+            'family_total': int(family_grand_totals.get(code, 0)),
             'yearly_counts': yearly,
             'top_manufacturers': top_mfrs,
             'top_l2_codes': top_l2,
@@ -2330,8 +2345,8 @@ def build_detailed_report_pdf(report_data, chart_images):
         pct_rows = [
             [f['code'],
              Paragraph(f['description'] or '—', ParagraphStyle('td', fontSize=9, leading=12)),
-             f"{f['grand_total']:,}",
-             f"{f['grand_total']/total*100:.1f}%" if total else '—']
+             f"{f.get('family_total', f['grand_total']):,}",
+             f"{f.get('family_total', f['grand_total'])/total*100:.1f}%" if total else '—']
             for f in fams
         ]
         col_w = [page_w*0.12, page_w*0.52, page_w*0.18, page_w*0.18]
@@ -2464,8 +2479,9 @@ def build_detailed_report_pdf(report_data, chart_images):
         # Top manufacturers table
         if fam['top_manufacturers']:
             story.append(Paragraph('Top Manufacturers:', body_style))
+            _mfr_denom = fam.get('family_total') or fam['grand_total']
             mfr_rows = [[m['name'], f"{m['count']:,}",
-                         f"{m['count']/fam['grand_total']*100:.1f}%" if fam['grand_total'] else '—']
+                         f"{m['count']/_mfr_denom*100:.1f}%" if _mfr_denom else '—']
                         for m in fam['top_manufacturers']]
             story.append(make_table(
                 ['Manufacturer', 'Events', '% of Code Total'],
