@@ -8,6 +8,7 @@ import re
 import time
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import requests
@@ -2539,8 +2540,28 @@ def _maude_generate_csv_windowed(probe, date_from, date_to, progress_callback=No
         cumulative_processed += win_probe.get('total_results', 0)
 
 
+_MAUDE_FETCH_CONCURRENCY = int(os.getenv('MAUDE_FETCH_CONCURRENCY', '8'))
+
+
+def _maude_fetch_page(base_url, search, sort, limit, skip):
+    """Fetch a single openFDA page by skip offset. Returns list of records (possibly empty)."""
+    params = {'search': search, 'limit': limit, 'sort': sort, 'skip': skip}
+    try:
+        resp = _openfda_get(base_url, params=params, allow_not_found=True, allow_bad_request=True)
+        if resp.status_code >= 400:
+            return []
+        return resp.json().get('results', []) or []
+    except Exception:
+        return []
+
+
 def _maude_generate_csv(probe, progress_callback=None):
-    """Generator that yields CSV bytes for a MAUDE export given a completed probe dict."""
+    """Generator that yields CSV bytes for a MAUDE export given a completed probe dict.
+
+    Uses parallel skip-based pagination when total_results is known and small enough
+    to fit under the 25K skip cap. Falls back to sequential Link-header pagination
+    otherwise (for windows with unknown totals).
+    """
     columns = probe['columns']
     first_results = probe['first_results']
     next_url = probe['next_url']
@@ -2552,6 +2573,7 @@ def _maude_generate_csv(probe, progress_callback=None):
     selected_date_field = probe['selected_date_field']
     selected_code = probe['selected_code']
     base_url = probe['base_url']
+    total_results = probe.get('total_results') or 0
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=columns)
@@ -2560,16 +2582,73 @@ def _maude_generate_csv(probe, progress_callback=None):
     output.seek(0)
     output.truncate(0)
 
+    processed = 0
+    scanned = 0
+    last_progress_time = time.time()
+    buffered_rows = 0
+    flush_every = 500
+    max_skip = 25000
+
+    def _emit_records(records):
+        nonlocal processed, scanned, buffered_rows, last_progress_time
+        out_chunks = []
+        for record in records:
+            scanned += 1
+            if not _record_in_date_range(record, start_date, end_date, selected_date_field):
+                continue
+            if not _record_has_product_code(record, selected_code):
+                continue
+            writer.writerow(_maude_build_row(record, selected_code))
+            buffered_rows += 1
+            processed += 1
+            if buffered_rows >= flush_every:
+                out_chunks.append(output.getvalue().encode('utf-8'))
+                output.seek(0); output.truncate(0)
+                buffered_rows = 0
+            if progress_callback and (processed % 50 == 0 or (time.time() - last_progress_time) > 0.4):
+                progress_callback(processed, scanned)
+                last_progress_time = time.time()
+        return out_chunks
+
+    # ── Parallel path: total known and fits under skip cap ──
+    if total_results and total_results <= (max_skip + limit):
+        # First page already fetched in probe → skip 0
+        for chunk in _emit_records(first_results):
+            yield chunk
+
+        skip_offsets = list(range(limit, total_results, limit))
+        if skip_offsets:
+            results_by_skip = {}
+            with ThreadPoolExecutor(max_workers=_MAUDE_FETCH_CONCURRENCY) as ex:
+                future_map = {
+                    ex.submit(_maude_fetch_page, base_url, search, sort, limit, sk): sk
+                    for sk in skip_offsets
+                }
+                for fut in as_completed(future_map):
+                    sk = future_map[fut]
+                    try:
+                        results_by_skip[sk] = fut.result()
+                    except Exception:
+                        results_by_skip[sk] = []
+                    if progress_callback:
+                        progress_callback(processed, scanned)
+            # Stream pages in skip order so output is deterministic
+            for sk in skip_offsets:
+                for chunk in _emit_records(results_by_skip.get(sk, [])):
+                    yield chunk
+
+        if buffered_rows > 0:
+            yield output.getvalue().encode('utf-8')
+            output.seek(0); output.truncate(0)
+        if progress_callback:
+            progress_callback(processed, scanned)
+        return
+
+    # ── Sequential fallback (unknown total or beyond skip cap) ──
     current_results = first_results
     current_next = next_url
     last_next = None
-    processed = 0
-    scanned = 0
     pages_fetched = 1
-    last_progress_time = time.time()
-    buffered_rows = 0
-    flush_every = 200
-    max_skip = 25000
 
     while True:
         for record in current_results:
