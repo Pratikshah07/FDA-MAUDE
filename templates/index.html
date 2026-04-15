@@ -1193,9 +1193,10 @@
                 startHeartbeat(33);
 
                 let attempts = 0;
-                const maxAttempts  = 600;
+                const maxAttempts  = 2500;  // ~50 min at 1200ms poll
                 const pollInterval = 1200;
                 let lastStep = 0;
+                let lastPhase = '';
 
                 const poll = async () => {
                     attempts++;
@@ -1228,9 +1229,11 @@
                             if (step === 1) {
                                 showBulkStatus(buildFetchMsg(processed, total, scanned), 'info');
                             } else if (step === 2) {
+                                const phase = s.step_name || 'Cleaning & processing data…';
                                 showBulkStatus(
-                                    '<i class="fas fa-magic" style="margin-right:8px;"></i>Cleaning &amp; processing data…',
+                                    '<i class="fas fa-magic" style="margin-right:8px;"></i>' + phase,
                                     'info');
+                                lastPhase = phase;
                             } else {
                                 showBulkStatus(
                                     '<i class="fas fa-chart-bar" style="margin-right:8px;"></i>Generating IMDRF code counts…',

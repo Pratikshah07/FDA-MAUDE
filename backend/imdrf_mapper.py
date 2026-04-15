@@ -36,6 +36,9 @@ class IMDRFMapper:
         self.level1_map = {}
         self.level2_map = {}
         self.level3_map = {}
+        self.patient_level1_map = {}
+        self.patient_level2_map = {}
+        self.patient_level3_map = {}
         self.level1_terms = []  # For Groq fallback
         self.level2_hierarchy = {}  # level1_term -> [level2_terms]
         self.level3_hierarchy = {}  # level2_term -> [level3_terms]
@@ -104,9 +107,13 @@ class IMDRFMapper:
         level2_hierarchy = {}
         level3_hierarchy = {}
         annex_codes = set()
-        
+
+        # Patient-problem-specific maps (Annex E only) so E-codes are not
+        # shadowed by device-problem terms sharing the same wording.
+        patient_level1_map, patient_level2_map, patient_level3_map = {}, {}, {}
+
         required_cols = {"Level 1 Term", "Level 2 Term", "Level 3 Term", "Code"}
-        
+
         for sheet in xl.sheet_names:
             df_raw = xl.parse(sheet_name=sheet, header=None, dtype=str)
             
@@ -144,11 +151,15 @@ class IMDRFMapper:
                 l2 = self._norm_term(r.get("Level 2 Term"))
                 l3 = self._norm_term(r.get("Level 3 Term"))
                 
+                is_patient_sheet = str(sheet).strip().upper() == "E"
+
                 if len(code) == 3 and l1:
                     level1_map.setdefault(l1, code)
                     if l1 not in level1_terms:
                         level1_terms.append(l1)
                     current_l1 = l1
+                    if is_patient_sheet:
+                        patient_level1_map.setdefault(l1, code)
                 elif len(code) == 5 and l2:
                     level2_map.setdefault(l2, code)
                     if current_l1:
@@ -157,6 +168,8 @@ class IMDRFMapper:
                         if l2 not in level2_hierarchy[current_l1]:
                             level2_hierarchy[current_l1].append(l2)
                     current_l2 = l2
+                    if is_patient_sheet:
+                        patient_level2_map.setdefault(l2, code)
                 elif len(code) == 7 and l3:
                     level3_map.setdefault(l3, code)
                     if current_l2:
@@ -164,6 +177,8 @@ class IMDRFMapper:
                             level3_hierarchy[current_l2] = []
                         if l3 not in level3_hierarchy[current_l2]:
                             level3_hierarchy[current_l2].append(l3)
+                    if is_patient_sheet:
+                        patient_level3_map.setdefault(l3, code)
         
         self.level1_map = level1_map
         self.level2_map = level2_map
@@ -172,8 +187,12 @@ class IMDRFMapper:
         self.level2_hierarchy = level2_hierarchy
         self.level3_hierarchy = level3_hierarchy
         self.annex_codes = annex_codes
-        
+        self.patient_level1_map = patient_level1_map
+        self.patient_level2_map = patient_level2_map
+        self.patient_level3_map = patient_level3_map
+
         print(f"Loaded Annex: L1={len(level1_map)}, L2={len(level2_map)}, L3={len(level3_map)}, Total codes={len(annex_codes)}")
+        print(f"Patient (Annex E): L1={len(patient_level1_map)}, L2={len(patient_level2_map)}, L3={len(patient_level3_map)}")
     
     def _map_one_problem_to_code(self, problem_part: str) -> str:
         """
@@ -510,6 +529,26 @@ Return format (JSON only):
     def validate_code(self, code: str) -> bool:
         """Validate that code exists in Annex."""
         return code in self.annex_codes
+
+    def map_patient_problem_part(self, patient_problem_part: str) -> str:
+        """
+        Deterministically map one Patient Problem term to an IMDRF Annex E code.
+        Preference: level3 > level2 > level1. Returns "" if no match.
+        """
+        if self._is_blank(patient_problem_part):
+            return ""
+        pn = self._norm_term(patient_problem_part)
+        if not pn:
+            return ""
+        if pn == self._norm_term("Appropriate Term/Code Not Available"):
+            return ""
+        if pn in self.patient_level3_map:
+            return self.patient_level3_map[pn]
+        if pn in self.patient_level2_map:
+            return self.patient_level2_map[pn]
+        if pn in self.patient_level1_map:
+            return self.patient_level1_map[pn]
+        return ""
 
     # ==================== SCALABILITY METHODS ====================
 

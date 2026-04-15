@@ -3037,6 +3037,12 @@ def api_pipeline_start():
             processor = MAUDEProcessor()
             if os.path.exists(DEFAULT_IMDRF_PATH):
                 processor.load_imdrf_structure(DEFAULT_IMDRF_PATH)
+
+            def _phase_cb(label):
+                _set_pipeline_status(job_id, step=2, step_name=label,
+                                     user_id=job_user_id)
+            processor.phase_callback = _phase_cb
+
             stats = processor.process_file(raw_path, cleaned_path)
             if 'raw' not in requested_outputs:
                 try:

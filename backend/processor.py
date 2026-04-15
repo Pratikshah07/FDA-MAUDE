@@ -13,7 +13,7 @@ import os
 import pandas as pd
 import re
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Callable
 from dateutil import parser as date_parser
 
 from config import (
@@ -47,6 +47,15 @@ class MAUDEProcessor:
         self._audit_rows_removed_by_reason: List[Dict] = []   # [{reason, count}]
         self._audit_manufacturer_list: List[str] = []
         self._audit_imdrf_stats: Dict = {}                    # {non_empty, mapped, unmapped}
+        # Optional callback for phase-level progress updates: fn(phase_label: str)
+        self.phase_callback: Optional[Callable[[str], None]] = None
+
+    def _emit_phase(self, label: str):
+        if self.phase_callback:
+            try:
+                self.phase_callback(label)
+            except Exception:
+                pass
     
     def load_imdrf_structure(self, file_path: str):
         """
@@ -68,6 +77,7 @@ class MAUDEProcessor:
             Dictionary with processing statistics and validation results
         """
         # Phase 0: Column Identification (AI-assisted)
+        self._emit_phase('Reading raw data…')
         df = self._ingest_file(input_path)
         
         if df.empty:
@@ -82,25 +92,29 @@ class MAUDEProcessor:
         print(f"Column mapping: {self.column_map}")
         
         # Phase 1: Normalize missing tokens
+        self._emit_phase('Normalizing missing values…')
         df = self._normalize_missing_tokens(df)
-        
+
         # Phase 2: Data Cleaning (column removal only)
+        self._emit_phase('Removing unused columns…')
         df = self._clean_data(df)
-        
+
         # Phase 3: Date Standardization (converts to "" on failure)
+        self._emit_phase('Standardizing dates…')
         df = self._standardize_dates(df)
-        
+
         # Phase 3.5: Row Removal (AFTER date standardization)
-        # Remove rows where BOTH Event Date == "" AND Date Received == ""
         df = self._remove_blank_date_rows(df)
-        
+
         # Phase 4: Manufacturer Normalization
+        self._emit_phase('Normalizing manufacturers…')
         df = self._normalize_manufacturers(df)
         
         # Phase 5: Extract Keywords - DISABLED per user request
         # df = self._extract_keywords(df)
         
         # Phase 6: IMDRF Mapping (Deterministic primary + Groq fallback)
+        self._emit_phase('Mapping IMDRF codes for device problems…')
         print(f"\n=== IMDRF MAPPING PHASE ===")
         total_codes = len(self.imdrf_mapper.level1_map) + len(self.imdrf_mapper.level2_map) + len(self.imdrf_mapper.level3_map)
         if total_codes > 0:
@@ -110,19 +124,28 @@ class MAUDEProcessor:
         df = self._map_imdrf_codes(df)
 
         # Phase 6.5: Patient Problem normalization (explode semicolon-separated values into rows)
+        self._emit_phase('Mapping IMDRF codes for patient problems…')
         df = self._explode_patient_problem_rows(df)
-        
+
         # Phase 7: Final Validation
+        self._emit_phase('Validating output…')
         validation_results = self._validate_output(df, original_cols)
-        
+
         # Phase 7.5: Sanitize for Excel output (remove illegal characters)
+        self._emit_phase('Sanitizing cells for Excel…')
         df = self._sanitize_for_excel(df)
 
         # Save output (prefer faster xlsxwriter if available)
+        self._emit_phase(f'Writing Excel file ({len(df):,} rows)…')
         try:
             import xlsxwriter  # noqa: F401
             df.to_excel(output_path, index=False, engine='xlsxwriter')
-        except Exception:
+            print(f"Excel written via xlsxwriter: {output_path}")
+        except ImportError:
+            print("xlsxwriter not installed — falling back to openpyxl (slower). pip install xlsxwriter recommended.")
+            df.to_excel(output_path, index=False, engine='openpyxl')
+        except Exception as e:
+            print(f"xlsxwriter failed ({e}); retrying with openpyxl…")
             df.to_excel(output_path, index=False, engine='openpyxl')
         
         return {
@@ -144,28 +167,42 @@ class MAUDEProcessor:
         Remove illegal characters that Excel worksheets cannot accept.
         This prevents openpyxl IllegalCharacterError during export.
         """
-        try:
-            from openpyxl.utils.cell import ILLEGAL_CHARACTERS_RE
-        except Exception:
-            ILLEGAL_CHARACTERS_RE = None
-        cleaned = df.copy()
+        ILLEGAL_CHARACTERS_RE = None
+        for _mod in ('openpyxl.cell.cell', 'openpyxl.utils.cell'):
+            try:
+                ILLEGAL_CHARACTERS_RE = __import__(_mod, fromlist=['ILLEGAL_CHARACTERS_RE']).ILLEGAL_CHARACTERS_RE
+                break
+            except Exception:
+                continue
+        if ILLEGAL_CHARACTERS_RE is None:
+            # Compile our own — same ranges Excel rejects
+            ILLEGAL_CHARACTERS_RE = re.compile(r'[\000-\010]|[\013-\014]|[\016-\037]')
 
         if ILLEGAL_CHARACTERS_RE is not None:
-            for col in cleaned.columns:
-                if cleaned[col].dtype == object or str(cleaned[col].dtype) == 'string':
-                    cleaned[col] = cleaned[col].astype(str).str.replace(ILLEGAL_CHARACTERS_RE, '', regex=True)
-            return cleaned
+            for col in df.columns:
+                dt = str(df[col].dtype)
+                if dt not in ('object', 'string', 'category'):
+                    continue
+                if dt == 'category':
+                    df[col] = df[col].astype(str)
+                # Fast pre-check: skip columns with no illegal chars at all
+                try:
+                    if not df[col].str.contains(ILLEGAL_CHARACTERS_RE, regex=True, na=False).any():
+                        continue
+                except Exception:
+                    pass
+                df[col] = df[col].str.replace(ILLEGAL_CHARACTERS_RE, '', regex=True)
+            return df
 
-        # Fallback: strip control chars except tab/newline/carriage return (slower)
         def _clean_value(value):
             if value is None:
                 return value
             text = str(value)
             return ''.join(ch for ch in text if ch in ('\t', '\n', '\r') or ord(ch) >= 32)
 
-        for col in cleaned.columns:
-            cleaned[col] = cleaned[col].map(_clean_value)
-        return cleaned
+        for col in df.columns:
+            df[col] = df[col].map(_clean_value)
+        return df
     
     def _ingest_file(self, file_path: str) -> pd.DataFrame:
         """
@@ -498,25 +535,44 @@ class MAUDEProcessor:
         print(f"\n=== PATIENT PROBLEM NORMALIZATION PHASE ===")
         print(f"Found Patient Problem column: '{patient_problem_col}'")
 
-        expanded_rows = []
+        # Ensure IMDRF Patient Code column exists immediately after Patient Problem
+        if 'IMDRF Patient Code' not in df.columns:
+            cols = list(df.columns)
+            insert_at = cols.index(patient_problem_col) + 1
+            cols.insert(insert_at, 'IMDRF Patient Code')
+            df = df.reindex(columns=cols)
+            df['IMDRF Patient Code'] = ""
 
-        for _, row in df.iterrows():
-            raw = row.get(patient_problem_col, "")
-            raw_str = "" if raw is None else str(raw)
-            parts = [p.strip() for p in raw_str.split(";") if p.strip()]
+        # Pre-compute patient-problem -> E-code map over unique parts to avoid
+        # per-row lookups and per-row dict materialization (OOM-safe).
+        raw_series = df[patient_problem_col].fillna("").astype(str)
+        parts_series = raw_series.apply(
+            lambda s: [p.strip() for p in s.split(";") if p.strip()] or [s.strip()]
+        )
 
-            if not parts:
-                new_row = row.to_dict()
-                new_row[patient_problem_col] = raw_str.strip()
-                expanded_rows.append(new_row)
-                continue
+        unique_parts = set()
+        for parts in parts_series:
+            for p in parts:
+                if p:
+                    unique_parts.add(p)
+        patient_map = {p: self.imdrf_mapper.map_patient_problem_part(p) for p in unique_parts}
 
-            for part in parts:
-                new_row = row.to_dict()
-                new_row[patient_problem_col] = part
-                expanded_rows.append(new_row)
+        work = df.copy()
+        work[patient_problem_col] = parts_series
+        exploded = work.explode(patient_problem_col, ignore_index=True)
+        exploded[patient_problem_col] = exploded[patient_problem_col].fillna("").astype(str)
+        exploded['IMDRF Patient Code'] = exploded[patient_problem_col].map(
+            lambda p: patient_map.get(p, "") if p else ""
+        )
 
-        return pd.DataFrame(expanded_rows, columns=df.columns)
+        result_df = exploded[list(df.columns)]
+
+        # Audit
+        mapped_mask = result_df['IMDRF Patient Code'].astype(str).str.strip() != ''
+        non_empty_mask = result_df[patient_problem_col].astype(str).str.strip() != ''
+        print(f"Patient problem mapping: {int(non_empty_mask.sum())} non-empty, {int(mapped_mask.sum())} codes mapped")
+
+        return result_df
     
     def _clean_manufacturer(self, val: str) -> str:
         """
@@ -797,29 +853,24 @@ class MAUDEProcessor:
         """
         Expand rows so each semicolon-separated device problem becomes its own row
         with the mapped IMDRF Code beside it, while preserving all other columns.
+
+        Vectorized to avoid materializing Python dicts per row (prevents OOM on
+        large datasets).
         """
-        expanded_rows = []
+        raw_series = df[device_problem_col].fillna("").astype(str)
+        parts_series = raw_series.apply(
+            lambda s: [p.strip() for p in s.split(";") if p.strip()] or [s.strip()]
+        )
 
-        for _, row in df.iterrows():
-            raw = row.get(device_problem_col, "")
-            raw_str = "" if raw is None else str(raw)
-            parts = [p.strip() for p in raw_str.split(";") if p.strip()]
+        work = df.copy()
+        work[device_problem_col] = parts_series
+        exploded = work.explode(device_problem_col, ignore_index=True)
+        exploded[device_problem_col] = exploded[device_problem_col].fillna("").astype(str)
+        exploded['IMDRF Code'] = exploded[device_problem_col].map(lambda p: mapping.get(p, "") if p else "")
 
-            if not parts:
-                new_row = row.to_dict()
-                new_row[device_problem_col] = raw_str.strip()
-                new_row['IMDRF Code'] = ""
-                expanded_rows.append(new_row)
-                continue
+        # Preserve original column order
+        return exploded[list(df.columns)]
 
-            for part in parts:
-                new_row = row.to_dict()
-                new_row[device_problem_col] = part
-                new_row['IMDRF Code'] = mapping.get(part, "")
-                expanded_rows.append(new_row)
-
-        return pd.DataFrame(expanded_rows, columns=df.columns)
-    
     def _validate_output(self, df: pd.DataFrame, original_col_count: int) -> Dict[str, any]:
         """Phase 7: Final validation checks (HARD STOPS)."""
         results = {

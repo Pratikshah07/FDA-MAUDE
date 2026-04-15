@@ -35,7 +35,8 @@ COLUMNS_TO_MODIFY = [
 ]
 
 COLUMNS_TO_ADD = [
-    "IMDRF Code"
+    "IMDRF Code",
+    "IMDRF Patient Code"
 ]
 
 # Legal suffixes to remove from manufacturer names
