@@ -178,6 +178,7 @@ class MAUDEProcessor:
             # Compile our own — same ranges Excel rejects
             ILLEGAL_CHARACTERS_RE = re.compile(r'[\000-\010]|[\013-\014]|[\016-\037]')
 
+        EXCEL_MAX_CELL_LEN = 32767
         if ILLEGAL_CHARACTERS_RE is not None:
             for col in df.columns:
                 dt = str(df[col].dtype)
@@ -188,10 +189,22 @@ class MAUDEProcessor:
                 # Fast pre-check: skip columns with no illegal chars at all
                 try:
                     if not df[col].str.contains(ILLEGAL_CHARACTERS_RE, regex=True, na=False).any():
-                        continue
+                        pass
+                    else:
+                        df[col] = df[col].str.replace(ILLEGAL_CHARACTERS_RE, '', regex=True)
+                except Exception:
+                    df[col] = df[col].str.replace(ILLEGAL_CHARACTERS_RE, '', regex=True)
+                # Cap cells at Excel's 32,767-char limit with a trailing marker
+                try:
+                    over_mask = df[col].str.len() > EXCEL_MAX_CELL_LEN
+                    if over_mask.any():
+                        n_over = int(over_mask.sum())
+                        df.loc[over_mask, col] = (
+                            df.loc[over_mask, col].str[:EXCEL_MAX_CELL_LEN - 15] + '…[truncated]'
+                        )
+                        print(f"Truncated {n_over} oversized cell(s) in column '{col}' to fit Excel's 32,767-char limit")
                 except Exception:
                     pass
-                df[col] = df[col].str.replace(ILLEGAL_CHARACTERS_RE, '', regex=True)
             return df
 
         def _clean_value(value):
