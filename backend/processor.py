@@ -350,12 +350,18 @@ class MAUDEProcessor:
         
         for col in date_cols:
             if col in df.columns:
+                if str(df[col].dtype) == 'category':
+                    df[col] = df[col].astype(str)
                 df[col] = df[col].apply(lambda x: "" if str(x).strip().lower() in missing_tokens else str(x))
-        
+
         if device_problem_col and device_problem_col in df.columns:
+            if str(df[device_problem_col].dtype) == 'category':
+                df[device_problem_col] = df[device_problem_col].astype(str)
             df[device_problem_col] = df[device_problem_col].apply(lambda x: "" if str(x).strip().lower() in missing_tokens else str(x))
-        
+
         if manufacturer_col and manufacturer_col in df.columns:
+            if str(df[manufacturer_col].dtype) == 'category':
+                df[manufacturer_col] = df[manufacturer_col].astype(str)
             df[manufacturer_col] = df[manufacturer_col].apply(lambda x: "" if str(x).strip().lower() in missing_tokens else str(x))
         
         return df
@@ -393,9 +399,13 @@ class MAUDEProcessor:
         date_received_col = self.column_map.get("date_received")
         
         if event_date_col and event_date_col in df.columns:
+            if str(df[event_date_col].dtype) == 'category':
+                df[event_date_col] = df[event_date_col].astype(str)
             df[event_date_col] = df[event_date_col].apply(lambda x: self._parse_and_format_date(x))
-        
+
         if date_received_col and date_received_col in df.columns:
+            if str(df[date_received_col].dtype) == 'category':
+                df[date_received_col] = df[date_received_col].astype(str)
             df[date_received_col] = df[date_received_col].apply(lambda x: self._parse_and_format_date(x))
         
         return df
@@ -558,6 +568,8 @@ class MAUDEProcessor:
 
         # Pre-compute patient-problem -> E-code map over unique parts to avoid
         # per-row lookups and per-row dict materialization (OOM-safe).
+        if str(df[patient_problem_col].dtype) == 'category':
+            df[patient_problem_col] = df[patient_problem_col].astype(str)
         raw_series = df[patient_problem_col].fillna("").astype(str)
         parts_series = raw_series.apply(
             lambda s: [p.strip() for p in s.split(";") if p.strip()] or [s.strip()]
@@ -677,7 +689,11 @@ class MAUDEProcessor:
         
         print(f"\n=== MANUFACTURER NORMALIZATION PHASE ===")
         print(f"Found manufacturer column: '{manufacturer_col}'")
-        
+
+        # Convert from category dtype if needed (category blocks new values from apply/map)
+        if str(df[manufacturer_col].dtype) == 'category':
+            df[manufacturer_col] = df[manufacturer_col].astype(str)
+
         # Apply deterministic suffix cleanup first (in place)
         print("Applying deterministic suffix cleanup...")
         df[manufacturer_col] = df[manufacturer_col].apply(self._clean_manufacturer)
@@ -870,6 +886,8 @@ class MAUDEProcessor:
         Vectorized to avoid materializing Python dicts per row (prevents OOM on
         large datasets).
         """
+        if str(df[device_problem_col].dtype) == 'category':
+            df[device_problem_col] = df[device_problem_col].astype(str)
         raw_series = df[device_problem_col].fillna("").astype(str)
         parts_series = raw_series.apply(
             lambda s: [p.strip() for p in s.split(";") if p.strip()] or [s.strip()]
