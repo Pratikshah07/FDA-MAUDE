@@ -1828,7 +1828,7 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
 
     df['_l1'] = df['imdrf_prefix'].str[:3].str.upper()
     years = list(range(year_from, year_to + 1))
-    total_events = len(df)
+    total_events = len(df)  # preliminary; updated below after dedup
     total_manufacturers = int(df[mfr_col].nunique()) if mfr_col in df.columns else 0
 
     # Load IMDRF descriptions  {1: {code: str}, 2: {code: str}, 3: {code: str}}
@@ -1909,6 +1909,11 @@ def compute_detailed_report_data(df_exploded, mfr_col, file_path, annex_path,
                     if str(k).strip() and str(k).strip().lower() not in ('nan', 'none', '')
                 }
                 break
+
+        # Update total_events to the actual unique MAUDE event count (deduped
+        # by report number), rather than exploded IMDRF-code row count.
+        if len(raw_dedup) > 0:
+            total_events = len(raw_dedup)
     except Exception:
         pass
 
@@ -2310,7 +2315,7 @@ def build_detailed_report_pdf(report_data, chart_images):
     # Summary metrics box
     top_code = fams[0] if fams else None
     meta_rows = [
-        ['Total IMDRF events analysed', f'{total:,}'],
+        ['Total MAUDE events analysed', f'{total:,}'],
         ['Total manufacturers identified', f'{n_mfrs:,}'],
         ['Analysis period', f'{yr_from} – {yr_to}'],
     ]

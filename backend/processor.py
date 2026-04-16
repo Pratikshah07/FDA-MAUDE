@@ -5,7 +5,7 @@ Deterministic and audit-defensible.
 
 Scalability Features:
 - Chunked file reading for large CSV files (>50MB)
-- Memory optimization using category dtype for low-cardinality columns
+- Eager memory release during explode operations
 - Batch IMDRF mapping (processes unique problems once, not per-row)
 - Deterministic-only mode for files with 1000+ rows (fast processing)
 """
@@ -222,7 +222,7 @@ class MAUDEProcessor:
         Phase 1: Safe file ingestion with encoding detection and file type detection.
 
         Memory optimizations for large files:
-        - Uses category dtype for low-cardinality columns
+        - All columns kept as str dtype for safe downstream processing
         - Processes in chunks for very large CSV files
         - Garbage collection after loading
         """
@@ -315,14 +315,6 @@ class MAUDEProcessor:
             for col in df.columns:
                 df[col] = df[col].astype(str)
 
-            # Memory optimization: convert low-cardinality columns to category dtype
-            if len(df) > 1000:
-                for col in df.columns:
-                    # Check cardinality
-                    nunique = df[col].nunique()
-                    if nunique < len(df) * 0.1:  # Less than 10% unique values
-                        df[col] = df[col].astype('category')
-
             print(f"  Loaded {len(df)} rows, {len(df.columns)} columns")
             gc.collect()
 
@@ -350,18 +342,12 @@ class MAUDEProcessor:
         
         for col in date_cols:
             if col in df.columns:
-                if str(df[col].dtype) == 'category':
-                    df[col] = df[col].astype(str)
                 df[col] = df[col].apply(lambda x: "" if str(x).strip().lower() in missing_tokens else str(x))
 
         if device_problem_col and device_problem_col in df.columns:
-            if str(df[device_problem_col].dtype) == 'category':
-                df[device_problem_col] = df[device_problem_col].astype(str)
             df[device_problem_col] = df[device_problem_col].apply(lambda x: "" if str(x).strip().lower() in missing_tokens else str(x))
 
         if manufacturer_col and manufacturer_col in df.columns:
-            if str(df[manufacturer_col].dtype) == 'category':
-                df[manufacturer_col] = df[manufacturer_col].astype(str)
             df[manufacturer_col] = df[manufacturer_col].apply(lambda x: "" if str(x).strip().lower() in missing_tokens else str(x))
         
         return df
@@ -399,13 +385,9 @@ class MAUDEProcessor:
         date_received_col = self.column_map.get("date_received")
         
         if event_date_col and event_date_col in df.columns:
-            if str(df[event_date_col].dtype) == 'category':
-                df[event_date_col] = df[event_date_col].astype(str)
             df[event_date_col] = df[event_date_col].apply(lambda x: self._parse_and_format_date(x))
 
         if date_received_col and date_received_col in df.columns:
-            if str(df[date_received_col].dtype) == 'category':
-                df[date_received_col] = df[date_received_col].astype(str)
             df[date_received_col] = df[date_received_col].apply(lambda x: self._parse_and_format_date(x))
         
         return df
@@ -568,8 +550,6 @@ class MAUDEProcessor:
 
         # Pre-compute patient-problem -> E-code map over unique parts to avoid
         # per-row lookups and per-row dict materialization (OOM-safe).
-        if str(df[patient_problem_col].dtype) == 'category':
-            df[patient_problem_col] = df[patient_problem_col].astype(str)
         raw_series = df[patient_problem_col].fillna("").astype(str)
         parts_series = raw_series.apply(
             lambda s: [p.strip() for p in s.split(";") if p.strip()] or [s.strip()]
@@ -584,13 +564,16 @@ class MAUDEProcessor:
 
         work = df.copy()
         work[patient_problem_col] = parts_series
+        del parts_series
         exploded = work.explode(patient_problem_col, ignore_index=True)
+        del work
         exploded[patient_problem_col] = exploded[patient_problem_col].fillna("").astype(str)
         exploded['IMDRF Patient Code'] = exploded[patient_problem_col].map(
             lambda p: patient_map.get(p, "") if p else ""
         )
 
         result_df = exploded[list(df.columns)]
+        del exploded
 
         # Audit
         mapped_mask = result_df['IMDRF Patient Code'].astype(str).str.strip() != ''
@@ -689,10 +672,6 @@ class MAUDEProcessor:
         
         print(f"\n=== MANUFACTURER NORMALIZATION PHASE ===")
         print(f"Found manufacturer column: '{manufacturer_col}'")
-
-        # Convert from category dtype if needed (category blocks new values from apply/map)
-        if str(df[manufacturer_col].dtype) == 'category':
-            df[manufacturer_col] = df[manufacturer_col].astype(str)
 
         # Apply deterministic suffix cleanup first (in place)
         print("Applying deterministic suffix cleanup...")
@@ -886,8 +865,6 @@ class MAUDEProcessor:
         Vectorized to avoid materializing Python dicts per row (prevents OOM on
         large datasets).
         """
-        if str(df[device_problem_col].dtype) == 'category':
-            df[device_problem_col] = df[device_problem_col].astype(str)
         raw_series = df[device_problem_col].fillna("").astype(str)
         parts_series = raw_series.apply(
             lambda s: [p.strip() for p in s.split(";") if p.strip()] or [s.strip()]
@@ -895,12 +872,16 @@ class MAUDEProcessor:
 
         work = df.copy()
         work[device_problem_col] = parts_series
+        del parts_series
         exploded = work.explode(device_problem_col, ignore_index=True)
+        del work
         exploded[device_problem_col] = exploded[device_problem_col].fillna("").astype(str)
         exploded['IMDRF Code'] = exploded[device_problem_col].map(lambda p: mapping.get(p, "") if p else "")
 
         # Preserve original column order
-        return exploded[list(df.columns)]
+        result_df = exploded[list(df.columns)]
+        del exploded
+        return result_df
 
     def _validate_output(self, df: pd.DataFrame, original_col_count: int) -> Dict[str, any]:
         """Phase 7: Final validation checks (HARD STOPS)."""

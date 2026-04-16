@@ -2618,24 +2618,29 @@ def _maude_generate_csv(probe, progress_callback=None):
 
         skip_offsets = list(range(limit, total_results, limit))
         if skip_offsets:
-            results_by_skip = {}
-            with ThreadPoolExecutor(max_workers=_MAUDE_FETCH_CONCURRENCY) as ex:
-                future_map = {
-                    ex.submit(_maude_fetch_page, base_url, search, sort, limit, sk): sk
-                    for sk in skip_offsets
-                }
-                for fut in as_completed(future_map):
-                    sk = future_map[fut]
-                    try:
-                        results_by_skip[sk] = fut.result()
-                    except Exception:
-                        results_by_skip[sk] = []
-                    if progress_callback:
-                        progress_callback(processed, scanned)
-            # Stream pages in skip order so output is deterministic
-            for sk in skip_offsets:
-                for chunk in _emit_records(results_by_skip.get(sk, [])):
-                    yield chunk
+            # Process in batches to limit peak memory (avoid holding ALL pages at once)
+            batch_size = _MAUDE_FETCH_CONCURRENCY * 2
+            for batch_start in range(0, len(skip_offsets), batch_size):
+                batch = skip_offsets[batch_start:batch_start + batch_size]
+                results_by_skip = {}
+                with ThreadPoolExecutor(max_workers=_MAUDE_FETCH_CONCURRENCY) as ex:
+                    future_map = {
+                        ex.submit(_maude_fetch_page, base_url, search, sort, limit, sk): sk
+                        for sk in batch
+                    }
+                    for fut in as_completed(future_map):
+                        sk = future_map[fut]
+                        try:
+                            results_by_skip[sk] = fut.result()
+                        except Exception:
+                            results_by_skip[sk] = []
+                        if progress_callback:
+                            progress_callback(processed, scanned)
+                # Stream this batch in skip order, then free memory
+                for sk in batch:
+                    for chunk in _emit_records(results_by_skip.get(sk, [])):
+                        yield chunk
+                del results_by_skip
 
         if buffered_rows > 0:
             yield output.getvalue().encode('utf-8')
@@ -3367,6 +3372,20 @@ def api_pipeline_status(job_id):
     job = _get_pipeline_job(job_id)
     if not job or job.get('user_id') != current_user.id:
         return jsonify({'error': 'Job not found'}), 404
+
+    # Detect orphaned jobs: file says 'running' but in-memory dict is empty
+    # (background thread was killed by a server restart)
+    if job.get('status') in ('running', 'queued'):
+        with PIPELINE_JOBS_LOCK:
+            in_memory = PIPELINE_JOBS.get(job_id)
+        if not in_memory:
+            # Thread is dead — mark as failed so the frontend stops polling
+            _set_pipeline_status(job_id, status='failed',
+                                 error='Server restarted during processing. Please try again.',
+                                 user_id=job.get('user_id'))
+            job['status'] = 'failed'
+            job['error'] = 'Server restarted during processing. Please try again.'
+
     return jsonify({
         'status': job.get('status'),
         'step': job.get('step'),
