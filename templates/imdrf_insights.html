@@ -400,10 +400,6 @@
             min-height: 1.2em;
         }
 
-        /* ── Historical baseline table mini-bar ──────────────── */
-        .hist-bar-wrap { display:inline-block; width:90px; height:8px; background:var(--progress-bg); border-radius:6px; vertical-align:middle; overflow:hidden; }
-        .hist-bar-fill { height:100%; border-radius:6px; background:linear-gradient(90deg,#3b82f6,#34d399); transition:width 0.4s ease; }
-
         /* ── Section divider ──────────────────────────────────── */
         .section-divider {
             display: flex; align-items: center; gap: 12px;
@@ -1003,9 +999,6 @@
                     <button class="analyze-btn" id="analyzeBtn" style="margin-top:0; flex:1;">
                         <i class="fas fa-chart-bar"></i> Analyze Trends
                     </button>
-                    <button class="analyze-btn" id="compareBtn" style="margin-top:0; flex:1; display:none; background:linear-gradient(135deg,#059669 0%,#047857 100%);">
-                        <i class="fas fa-code-compare"></i> Compare vs Others
-                    </button>
                 </div>
 
             </div><!-- /#postFetchSection -->
@@ -1067,80 +1060,6 @@
 
         </div>
 
-        <!-- ── Comparison Charts ─────────────────────────────────── -->
-        <div id="comparisonSection" style="display:none; margin-top:30px;">
-            <div class="table-container" style="padding:24px;">
-                <h2 class="section-title">
-                    <i class="fas fa-code-compare" style="color:var(--primary);"></i>
-                    Manufacturer Comparison — <span id="comparisonTitle"></span>
-                </h2>
-                <div id="comparisonStatus" style="display:none; padding:12px 0; color:var(--text-secondary); font-size:0.9rem;"></div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:20px;">
-                    <div>
-                        <h3 style="font-size:1rem; font-weight:600; color:var(--text-primary); margin-bottom:8px;">
-                            <i class="fas fa-calendar-check" style="color:var(--primary);"></i>
-                            Current Period
-                            <span id="compCurrentRange" style="font-size:0.8rem; font-weight:400; color:var(--text-secondary);"></span>
-                        </h3>
-                        <div id="compCurrentLoading" style="display:none; padding:30px 0; text-align:center; color:var(--text-secondary); font-size:0.88rem;">
-                            <span class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span>
-                            Loading…
-                        </div>
-                        <div id="compCurrentChart"></div>
-                    </div>
-                    <div>
-                        <h3 style="font-size:1rem; font-weight:600; color:var(--text-primary); margin-bottom:8px;">
-                            <i class="fas fa-history" style="color:var(--primary);"></i>
-                            Historical Baseline
-                            <span id="compHistRange" style="font-size:0.8rem; font-weight:400; color:var(--text-secondary);"></span>
-                        </h3>
-                        <div id="compHistLoading" style="display:none; padding:30px 0; text-align:center; color:var(--text-secondary); font-size:0.88rem;">
-                            <span class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span>
-                            Waiting for historical data…
-                        </div>
-                        <div id="compHistChart"></div>
-                    </div>
-                </div>
-                <div style="margin-top:12px; font-size:0.78rem; color:var(--text-secondary);">
-                    <span style="display:inline-block; width:24px; border-top:2px solid #2563eb; margin-right:4px; vertical-align:middle;"></span> Selected manufacturer &nbsp;&nbsp;
-                    <span style="display:inline-block; width:24px; border-top:2px dashed #ef4444; margin-right:4px; vertical-align:middle;"></span> Overall average (total ÷ active mfrs) &nbsp;&nbsp;
-                    <span style="display:inline-block; width:24px; border-top:2px solid #f59e0b; margin-right:4px; vertical-align:middle;"></span> Others mean (per-month avg of remaining mfrs)
-                </div>
-            </div>
-        </div>
-
-        <!-- ── Historical Baseline Code Distribution Table ─────── -->
-        <div id="histCodeTableSection" style="display:none; margin-top:30px;">
-            <div class="table-container" style="position:relative;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
-                    <h3 class="section-title" style="margin:0;">
-                        <i class="fas fa-history" style="color:var(--primary);"></i>
-                        Historical Baseline — IMDRF Code Distribution
-                        <span id="histTableYearLabel" style="font-size:0.82rem; font-weight:400; color:var(--text-secondary);"></span>
-                    </h3>
-                    <span id="histTableTotalBadge" style="font-size:0.82rem; color:var(--text-secondary);"></span>
-                </div>
-                <div id="histTableLoading" style="display:none; padding:18px 0; text-align:center; color:var(--text-secondary); font-size:0.88rem;">
-                    <span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span>
-                    Fetching baseline data in background…
-                </div>
-                <div id="histTableError" style="display:none; color:var(--status-error-text); font-size:0.88rem; padding:8px 0;"></div>
-                <div id="histTableWrap" style="display:none; overflow-x:auto; max-height:420px; overflow-y:auto;">
-                    <table id="histCodeTable" style="width:100%; border-collapse:collapse; font-size:0.88rem;">
-                        <thead>
-                            <tr>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">#</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">Event Code</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">Count (2 yrs)</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">Proportion</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1; min-width:120px;">Share</th>
-                            </tr>
-                        </thead>
-                        <tbody id="histCodeTableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
 
         <!-- ── Selected Period Code Distribution Table ─────────── -->
         <div id="currentCodeTableSection" style="display:none; margin-top:30px;">
@@ -1203,38 +1122,6 @@
             </div>
         </div>
 
-        <!-- ── Historical Manufacturer Average Table ──────────── -->
-        <div id="histMfrAvgTableSection" style="display:none; margin-top:30px;">
-            <div class="table-container" style="position:relative;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
-                    <h3 class="section-title" style="margin:0;">
-                        <i class="fas fa-history" style="color:var(--primary);"></i>
-                        Historical Average per Manufacturer
-                        <span id="histMfrAvgCodeLabel" style="font-size:0.82rem; font-weight:400; color:var(--text-secondary);"></span>
-                    </h3>
-                    <span id="histMfrAvgBadge" style="font-size:0.82rem; color:var(--text-secondary);"></span>
-                </div>
-                <div id="histMfrAvgLoading" style="display:none; padding:18px 0; text-align:center; color:var(--text-secondary); font-size:0.88rem;">
-                    <span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></span>
-                    Waiting for historical data to finish loading…
-                </div>
-                <div id="histMfrAvgError" style="display:none; color:var(--status-error-text); font-size:0.88rem; padding:8px 0;"></div>
-                <div id="histMfrAvgWrap" style="display:none; overflow-x:auto; max-height:420px; overflow-y:auto;">
-                    <table id="histMfrAvgTable" style="width:100%; border-collapse:collapse; font-size:0.88rem;">
-                        <thead>
-                            <tr>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">#</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1;">Manufacturer</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">Count (2 yrs)</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:right;border-bottom:2px solid var(--border);z-index:1;">vs Average</th>
-                                <th style="position:sticky;top:0;background:var(--table-header-bg);padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);z-index:1; min-width:120px;">Share</th>
-                            </tr>
-                        </thead>
-                        <tbody id="histMfrAvgTableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
 
         <!-- ── Detailed Report Card ──────────────────────────────── -->
         <div class="report-card" id="reportCard" style="display: none;">
@@ -1281,9 +1168,6 @@
         let currentLevel = 1;
         let _fetchJobId = null;
         let _fetchPollTimer = null;
-        let reportHistFileId = null;       // set after step 2 of PDF generation
-        let _histYearFrom = null;          // e.g. 2021
-        let _histYearTo   = null;          // e.g. 2022
 
 
         const controlsSection = document.getElementById('controlsSection');
@@ -1292,7 +1176,6 @@
         const mfrSelect = document.getElementById('mfrSelect');
         const grainSelect = document.getElementById('grainSelect');
         const analyzeBtn = document.getElementById('analyzeBtn');
-        const compareBtn = document.getElementById('compareBtn');
         const downloadCountsAllBtn = document.getElementById('downloadCountsAllBtn');
         const downloadCountsTop = document.getElementById('downloadCountsTop');
         const status = document.getElementById('status');
@@ -1549,12 +1432,8 @@
             fetchDataBtn.innerHTML = '<span class="spinner"></span> Fetching…';
             fetchProgress.style.display = 'block';
             postFetchSection.style.display = 'none';
-            document.getElementById('histCodeTableSection').style.display = 'none';
             document.getElementById('currentCodeTableSection').style.display = 'none';
             document.getElementById('mfrAvgTableSection').style.display = 'none';
-            document.getElementById('histMfrAvgTableSection').style.display = 'none';
-            document.getElementById('comparisonSection').style.display = 'none';
-            compareBtn.style.display = 'none';
             resetFetchSteps();
             resultsSection.classList.remove('show');
             analyzeBtn.classList.remove('show');
@@ -1650,16 +1529,6 @@
                             fetchDataBtn.disabled = false;
                             fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
 
-                            // ── Silent background: fetch previous 2-year baseline ──
-                            // e.g. input 2023-2025 → fetch 2021-01-01 to 2022-12-31
-                            reportHistFileId = null;  // clear any stale cache
-                            _histYearFrom = yearFrom - 2;
-                            _histYearTo   = yearFrom - 1;
-                            document.getElementById('histMfrAvgTableSection').style.display = 'none';
-                            const histDateFrom = `${yearFrom - 2}-01-01`;
-                            const histDateTo   = `${yearFrom - 1}-12-31`;
-                            _showHistTableLoading(yearFrom - 2, yearFrom - 1);
-                            _fetchHistBaseline(productCode, histDateFrom, histDateTo, currentLevel);
                         }
                     } catch (err) {
                         clearInterval(_fetchPollTimer);
@@ -1681,82 +1550,6 @@
                 fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
             }
         });
-
-        // ── Background historical baseline fetch (silent, no UI progress) ──
-        async function _fetchHistBaseline(productCode, histDateFrom, histDateTo, level) {
-            try {
-                const startResp = await fetch('/api/pipeline/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        product_code: productCode,
-                        date_from: histDateFrom,
-                        date_to: histDateTo,
-                        pipeline_type: 'clean'
-                    })
-                });
-                if (!startResp.ok) return;
-                const startData = await startResp.json();
-                const histJobId = startData.job_id;
-                if (!histJobId) return;
-
-                // Poll silently until done
-                await new Promise((resolve) => {
-                    const timer = setInterval(async () => {
-                        try {
-                            const pollResp = await fetch(`/api/pipeline/status/${histJobId}`);
-                            if (!pollResp.ok) { clearInterval(timer); resolve(); return; }
-                            const poll = await pollResp.json();
-                            if (poll.status === 'done' || poll.status === 'failed') {
-                                clearInterval(timer);
-                                resolve();
-                            }
-                        } catch (_) { clearInterval(timer); resolve(); }
-                    }, 3000);
-                });
-
-                // Prepare IMDRF insights from the historical pipeline result
-                const prepResp = await fetch('/api/imdrf-insights/prepare-from-pipeline', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ job_id: histJobId, level })
-                });
-                if (!prepResp.ok) return;
-                const prepData = await prepResp.json();
-                if (prepData && prepData.file_id) {
-                    reportHistFileId = prepData.file_id;  // cache for proportion/report use
-                    // Fetch and render the code distribution table
-                    try {
-                        const tblResp = await fetch('/api/imdrf-insights/hist-code-table', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ hist_file_id: reportHistFileId, level })
-                        });
-                        if (tblResp.ok) {
-                            const tblData = await tblResp.json();
-                            _renderHistCodeTable(tblData);
-                        } else {
-                            _showHistTableError('Could not load baseline table.');
-                        }
-                    } catch (_) {
-                        _showHistTableError('Could not load baseline table.');
-                    }
-                    // If user already selected a code, render the historical avg table now
-                    const currentPrefix = prefixSelect.value;
-                    if (currentPrefix) {
-                        _loadHistMfrAvgTable(currentPrefix);
-                    }
-                    // If comparison section is open, populate the historical chart now
-                    if (document.getElementById('comparisonSection').style.display !== 'none'
-                            && currentPrefix && mfrSelect.value) {
-                        _loadCompHistChart(currentPrefix, mfrSelect.value);
-                    }
-                }
-            } catch (_) {
-                // Silent failure — user will re-fetch if needed
-                _showHistTableError('Background fetch failed silently.');
-            }
-        }
 
         // ── Manufacturer average table ────────────────────────────────────
         async function _loadMfrAvgTable(prefix) {
@@ -1816,125 +1609,6 @@
         }
 
         // ── Historical manufacturer average table ─────────────────────────
-        async function _loadHistMfrAvgTable(prefix) {
-            const sec = document.getElementById('histMfrAvgTableSection');
-            if (!prefix) { sec.style.display = 'none'; return; }
-
-            sec.style.display = 'block';
-            const rangeLabel = (_histYearFrom && _histYearTo)
-                ? ` — ${prefix} (${_histYearFrom}–${_histYearTo})`
-                : ` — ${prefix}`;
-            document.getElementById('histMfrAvgCodeLabel').textContent = rangeLabel;
-
-            if (!reportHistFileId) {
-                // Hist data still loading — show spinner; will be called again once ready
-                document.getElementById('histMfrAvgLoading').style.display = 'block';
-                document.getElementById('histMfrAvgError').style.display = 'none';
-                document.getElementById('histMfrAvgWrap').style.display = 'none';
-                document.getElementById('histMfrAvgBadge').textContent = '';
-                return;
-            }
-
-            document.getElementById('histMfrAvgLoading').style.display = 'block';
-            document.getElementById('histMfrAvgError').style.display = 'none';
-            document.getElementById('histMfrAvgWrap').style.display = 'none';
-            document.getElementById('histMfrAvgBadge').textContent = '';
-
-            try {
-                const resp = await fetch(`/api/imdrf-insights/manufacturer-avg?prefix=${encodeURIComponent(prefix)}&file_id=${reportHistFileId}&level=${currentLevel}`);
-                const data = await parseJsonResponse(resp);
-                if (!resp.ok) throw new Error(data.error || 'Failed to load historical manufacturer averages');
-
-                document.getElementById('histMfrAvgLoading').style.display = 'none';
-                const rangeStr = (_histYearFrom && _histYearTo) ? ` · ${_histYearFrom}–${_histYearTo}` : '';
-                document.getElementById('histMfrAvgBadge').textContent =
-                    `${data.n_manufacturers} active manufacturers${rangeStr} · Average: ${data.average.toLocaleString(undefined, {maximumFractionDigits:2})} events/mfr`;
-
-                const tbody = document.getElementById('histMfrAvgTableBody');
-                tbody.innerHTML = '';
-                const avg = data.average;
-                const maxCount = data.rows.length > 0 ? data.rows[0].count : 1;
-
-                data.rows.forEach((row, idx) => {
-                    const barPct = Math.min(100, (row.count / maxCount) * 100);
-                    const diff = row.count - avg;
-                    const diffText = diff >= 0
-                        ? `<span style="color:var(--error);">+${diff.toFixed(1)}</span>`
-                        : `<span style="color:var(--success);">${diff.toFixed(1)}</span>`;
-                    const tr = document.createElement('tr');
-                    tr.style.borderBottom = '1px solid var(--border)';
-                    tr.innerHTML = `
-                        <td style="padding:8px 14px; color:var(--text-secondary); font-size:0.78rem;">${idx + 1}</td>
-                        <td style="padding:8px 14px; font-weight:500;">${row.manufacturer}</td>
-                        <td style="padding:8px 14px; text-align:right; font-weight:600;">${row.count.toLocaleString()}</td>
-                        <td style="padding:8px 14px; text-align:right;">${diffText} <span style="font-size:0.78rem; color:var(--text-secondary);">(avg ${avg.toLocaleString(undefined,{maximumFractionDigits:1})})</span></td>
-                        <td style="padding:8px 14px;">
-                            <div class="hist-bar-wrap">
-                                <div class="hist-bar-fill" style="width:${barPct.toFixed(1)}%;"></div>
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-
-                document.getElementById('histMfrAvgWrap').style.display = 'block';
-            } catch (err) {
-                document.getElementById('histMfrAvgLoading').style.display = 'none';
-                const errEl = document.getElementById('histMfrAvgError');
-                errEl.style.display = 'block';
-                errEl.textContent = `❌ ${err.message}`;
-            }
-        }
-
-        // ── Historical baseline table helpers ─────────────────────────────
-        function _showHistTableLoading(yearA, yearB) {
-            const sec = document.getElementById('histCodeTableSection');
-            sec.style.display = 'block';
-            document.getElementById('histTableYearLabel').textContent = ` (${yearA} – ${yearB})`;
-            document.getElementById('histTableLoading').style.display = 'block';
-            document.getElementById('histTableError').style.display = 'none';
-            document.getElementById('histTableWrap').style.display = 'none';
-            document.getElementById('histTableTotalBadge').textContent = '';
-        }
-
-        function _showHistTableError(msg) {
-            document.getElementById('histTableLoading').style.display = 'none';
-            const err = document.getElementById('histTableError');
-            err.style.display = 'block';
-            err.textContent = msg;
-        }
-
-        function _renderHistCodeTable(data) {
-            document.getElementById('histTableLoading').style.display = 'none';
-            const total = data.total_events || 0;
-            document.getElementById('histTableTotalBadge').textContent =
-                `Total events: ${total.toLocaleString()}`;
-
-            const tbody = document.getElementById('histCodeTableBody');
-            tbody.innerHTML = '';
-
-            (data.rows || []).forEach((row, idx) => {
-                const pct = (row.proportion * 100).toFixed(2);
-                const barPct = Math.min(100, row.proportion * 100);
-                const tr = document.createElement('tr');
-                tr.style.borderBottom = '1px solid var(--border)';
-                tr.innerHTML = `
-                    <td style="padding:8px 14px; color:var(--text-secondary); font-size:0.78rem;">${idx + 1}</td>
-                    <td style="padding:8px 14px; font-weight:600; font-family:monospace; color:var(--primary);">${row.code}</td>
-                    <td style="padding:8px 14px; text-align:right;">${row.count.toLocaleString()}</td>
-                    <td style="padding:8px 14px; text-align:right; font-weight:600;">${pct}%</td>
-                    <td style="padding:8px 14px;">
-                        <div class="hist-bar-wrap">
-                            <div class="hist-bar-fill" style="width:${barPct.toFixed(1)}%;"></div>
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            document.getElementById('histTableWrap').style.display = 'block';
-        }
-
         downloadCountsAllBtn.addEventListener('click', () => {
             if (!preparedData || !preparedData.file_id) {
                 showStatus('❌ Please fetch data first', 'error');
@@ -2065,9 +1739,6 @@
             if (!selectedPrefix || !preparedData) {
                 mfrSelect.innerHTML = '<option value="">— select a code first —</option>';
                 document.getElementById('mfrAvgTableSection').style.display = 'none';
-                document.getElementById('histMfrAvgTableSection').style.display = 'none';
-                compareBtn.style.display = 'none';
-                document.getElementById('comparisonSection').style.display = 'none';
                 return;
             }
 
@@ -2119,22 +1790,18 @@
                 mfrSelect.innerHTML = '<option value="">— error loading manufacturers —</option>';
             }
 
-            // ── Manufacturer average tables (current + historical) ───────
+            // ── Manufacturer average table ────────────────────────────────
             _loadMfrAvgTable(selectedPrefix);
-            _loadHistMfrAvgTable(selectedPrefix);
         });
 
         // ── When manufacturer changes: show Analyze + Compare buttons ──
         mfrSelect.addEventListener('change', () => {
             if (mfrSelect.value && prefixSelect.value) {
                 analyzeBtn.classList.add('show');
-                compareBtn.style.display = 'block';
             } else {
                 analyzeBtn.classList.remove('show');
-                compareBtn.style.display = 'none';
             }
             resultsSection.classList.remove('show');
-            document.getElementById('comparisonSection').style.display = 'none';
         });
 
         analyzeBtn.addEventListener('click', async () => {
@@ -2183,160 +1850,6 @@
             }
         });
 
-        // ── Compare vs Others button ──────────────────────────────────────
-        compareBtn.addEventListener('click', async () => {
-            const manufacturer = mfrSelect.value;
-            const prefix       = prefixSelect.value;
-            if (!preparedData || !prefix || !manufacturer) {
-                showStatus('❌ Please select an IMDRF code and a manufacturer first', 'error');
-                return;
-            }
-
-            compareBtn.disabled = true;
-            compareBtn.innerHTML = '<span class="spinner"></span> Loading…';
-
-            const sec = document.getElementById('comparisonSection');
-            sec.style.display = 'block';
-            sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-            document.getElementById('comparisonTitle').textContent =
-                `${manufacturer} — Code ${prefix}`;
-
-            document.getElementById('compCurrentLoading').style.display = 'block';
-            document.getElementById('compCurrentChart').innerHTML = '';
-            if (_fetchedYearFrom && _fetchedYearTo) {
-                document.getElementById('compCurrentRange').textContent =
-                    ` (${_fetchedYearFrom}–${_fetchedYearTo})`;
-            }
-
-            document.getElementById('compHistLoading').style.display = 'block';
-            document.getElementById('compHistChart').innerHTML = '';
-            if (_histYearFrom && _histYearTo) {
-                document.getElementById('compHistRange').textContent =
-                    ` (${_histYearFrom}–${_histYearTo})`;
-            }
-
-            // Fetch current period chart
-            try {
-                const url = `/api/imdrf-insights/mfr-comparison-data?prefix=${encodeURIComponent(prefix)}&manufacturer=${encodeURIComponent(manufacturer)}&file_id=${preparedData.file_id}&level=${currentLevel}`;
-                const resp = await fetch(url);
-                const data = await parseJsonResponse(resp);
-                document.getElementById('compCurrentLoading').style.display = 'none';
-                if (resp.ok) {
-                    _renderComparisonChart('compCurrentChart', data, manufacturer);
-                } else {
-                    document.getElementById('compCurrentChart').innerHTML =
-                        `<p style="color:var(--status-error-text);font-size:0.88rem;padding:8px 0;">❌ ${data.error || 'Failed to load'}</p>`;
-                }
-            } catch (err) {
-                document.getElementById('compCurrentLoading').style.display = 'none';
-                document.getElementById('compCurrentChart').innerHTML =
-                    `<p style="color:var(--status-error-text);font-size:0.88rem;padding:8px 0;">❌ ${err.message}</p>`;
-            }
-
-            // Fetch historical chart (may be deferred if hist not ready)
-            _loadCompHistChart(prefix, manufacturer);
-
-            compareBtn.disabled = false;
-            compareBtn.innerHTML = '<i class="fas fa-code-compare"></i> Compare vs Others';
-        });
-
-        // Called when hist data becomes available (from _fetchHistBaseline callback)
-        // or immediately if already ready
-        async function _loadCompHistChart(prefix, manufacturer) {
-            if (!reportHistFileId) {
-                // spinner stays visible — _fetchHistBaseline will call this again once ready
-                return;
-            }
-            document.getElementById('compHistLoading').style.display = 'block';
-            try {
-                const url = `/api/imdrf-insights/mfr-comparison-data?prefix=${encodeURIComponent(prefix)}&manufacturer=${encodeURIComponent(manufacturer)}&file_id=${reportHistFileId}&level=${currentLevel}`;
-                const resp = await fetch(url);
-                const data = await parseJsonResponse(resp);
-                document.getElementById('compHistLoading').style.display = 'none';
-                if (resp.ok) {
-                    _renderComparisonChart('compHistChart', data, manufacturer);
-                } else {
-                    document.getElementById('compHistChart').innerHTML =
-                        `<p style="color:var(--status-error-text);font-size:0.88rem;padding:8px 0;">❌ ${data.error || 'Failed to load'}</p>`;
-                }
-            } catch (err) {
-                document.getElementById('compHistLoading').style.display = 'none';
-                document.getElementById('compHistChart').innerHTML =
-                    `<p style="color:var(--status-error-text);font-size:0.88rem;padding:8px 0;">❌ ${err.message}</p>`;
-            }
-        }
-
-        function _renderComparisonChart(containerId, data, manufacturer) {
-            const traces = [];
-            const months = data.months || [];
-
-            // Line 1: Selected manufacturer (only if present in this dataset)
-            if (data.selected_in_data && data.selected_mfr) {
-                traces.push({
-                    x: months,
-                    y: data.selected_mfr,
-                    mode: 'lines+markers',
-                    name: manufacturer,
-                    line: { color: '#2563eb', width: 2 },
-                    marker: { size: 4 },
-                    hovertemplate: `%{x}<br>${manufacturer}: %{y}<extra></extra>`,
-                });
-            }
-
-            // Line 2: Flat overall average (horizontal dashed)
-            if (months.length > 0) {
-                traces.push({
-                    x: months,
-                    y: Array(months.length).fill(data.flat_avg),
-                    mode: 'lines',
-                    name: `Overall avg (${(data.flat_avg || 0).toFixed(1)})`,
-                    line: { color: '#ef4444', width: 1.5, dash: 'dash' },
-                    hovertemplate: `Overall avg: ${(data.flat_avg || 0).toFixed(2)}<extra></extra>`,
-                });
-            }
-
-            // Line 3: Others mean per month
-            if (data.others_mean && data.others_mean.length > 0) {
-                traces.push({
-                    x: months,
-                    y: data.others_mean,
-                    mode: 'lines+markers',
-                    name: 'Others mean',
-                    line: { color: '#f59e0b', width: 2 },
-                    marker: { size: 4 },
-                    hovertemplate: `%{x}<br>Others mean: %{y:.2f}<extra></extra>`,
-                });
-            }
-
-            if (traces.length === 0) {
-                document.getElementById(containerId).innerHTML =
-                    '<p style="color:var(--text-secondary);font-size:0.88rem;padding:16px 0;">No data available for this period.</p>';
-                return;
-            }
-
-            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            Plotly.newPlot(containerId, traces, {
-                margin: { t: 20, r: 20, b: 70, l: 50 },
-                height: 320,
-                xaxis: {
-                    title: 'Month',
-                    tickangle: -45,
-                    color: isDark ? '#a0aec0' : '#374151',
-                    gridcolor: isDark ? '#2d3748' : '#e5e7eb',
-                },
-                yaxis: {
-                    title: 'Event Count',
-                    color: isDark ? '#a0aec0' : '#374151',
-                    gridcolor: isDark ? '#2d3748' : '#e5e7eb',
-                    rangemode: 'tozero',
-                },
-                legend: { orientation: 'h', y: -0.3, font: { size: 11 } },
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                font: { color: isDark ? '#e2e8f0' : '#1f2937', size: 11 },
-            }, { responsive: true, displayModeBar: false });
-        }
 
         // Format a YYYY-MM-DD date string to a readable x-axis label based on grain
         function formatPeriodLabel(dateStr, grain) {

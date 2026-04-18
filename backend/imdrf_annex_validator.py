@@ -274,25 +274,23 @@ def extract_imdrf_codes_by_level(imdrf_code_str: str, level: int, validator: IMD
         # Extract only alphanumeric characters
         alphanumeric = re.sub(r'[^A-Za-z0-9]', '', token)
 
-        if len(alphanumeric) != required_length:
+        if len(alphanumeric) < required_length:
             continue
 
-        code = alphanumeric.upper()
+        code = alphanumeric[:required_length].upper()
 
-        # Validation logic based on level
         if level == 3:
-            # Level-3: Only exact matches from valid_level3 set
+            # Level-3 stays strict: must be exactly 7 chars and (if loaded) in the Annex set.
+            if len(alphanumeric) != required_length:
+                continue
             if validator.is_loaded() and validator.get_valid_codes(3):
                 if code in validator.get_valid_codes(3):
                     codes.append(code)
             else:
-                # If no Annex file, accept any 7-char code
                 codes.append(code)
-        elif level == 2:
-            # Level-2: Accept only exact 5-char codes
-            codes.append(code)
         else:
-            # Level-1: Accept only exact 3-char codes
+            # Level-1 / Level-2: roll up by truncating to the first N chars
+            # (e.g. A090803 → A09 at L1, A0908 at L2).
             codes.append(code)
 
     return codes

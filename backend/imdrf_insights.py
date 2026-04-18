@@ -1357,14 +1357,13 @@ def get_patient_problem_e_code_mfr_monthly_counts(file_path: str, annex_file_pat
 # PDF Report generation helpers
 # ---------------------------------------------------------------------------
 
-def compute_report_data(df_current, df_hist, mfr_col, manufacturer,
+def compute_report_data(df_current, mfr_col, manufacturer,
                         code_filter, period_from, period_to, grain, level):
     """
     Compute all data needed for the IMDRF Trend Analysis PDF report.
 
     Args:
         df_current: df_exploded for user's selected period (has imdrf_prefix, parsed_date)
-        df_hist:    df_exploded for preceding 2-year historical period
         mfr_col:    manufacturer column name
         manufacturer: selected manufacturer string
         code_filter: IMDRF code string OR "ALL" (→ top 5)
@@ -1373,9 +1372,9 @@ def compute_report_data(df_current, df_hist, mfr_col, manufacturer,
         level:  1, 2, or 3 (for display label)
 
     Returns:
-        dict with keys: manufacturer, period_from, period_to, hist_from, hist_to,
+        dict with keys: manufacturer, period_from, period_to,
         mfr_events, grand_total, level_label, grain_label,
-        top5 (list of dicts), historical (list of dicts),
+        top5 (list of dicts), current_period (list of dicts),
         trends (dict of code → {code, labels, mfr_values, peers_values})
     """
     period_from_ts = pd.Timestamp(period_from)
@@ -1418,26 +1417,6 @@ def compute_report_data(df_current, df_hist, mfr_col, manufacturer,
         prop = cnt / mfr_total if mfr_total > 0 else 0.0
         top5.append({'code': code, 'mfr_count': cnt, 'proportion': prop})
 
-    # ── Historical proportions ─────────────────────────────────────────────
-    df_hist_clean = df_hist[
-        ~df_hist['imdrf_prefix'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
-    ]
-    hist_grand_total = len(df_hist_clean)
-
-    # Derive hist date range from actual data
-    if not df_hist_clean.empty and df_hist_clean['parsed_date'].notna().any():
-        hist_from = df_hist_clean['parsed_date'].min().strftime('%Y-%m-%d')
-        hist_to   = df_hist_clean['parsed_date'].max().strftime('%Y-%m-%d')
-    else:
-        hist_from = ''
-        hist_to   = ''
-
-    historical = []
-    for code in codes_to_show:
-        hist_cnt  = int((df_hist_clean['imdrf_prefix'] == code).sum())
-        hist_prop = hist_cnt / hist_grand_total if hist_grand_total > 0 else 0.0
-        historical.append({'code': code, 'hist_total': hist_cnt, 'hist_proportion': hist_prop})
-
     # ── Current period proportions (all manufacturers) ────────────────────
     current_period = []
     for code in codes_to_show:
@@ -1472,14 +1451,11 @@ def compute_report_data(df_current, df_hist, mfr_col, manufacturer,
         'manufacturer': manufacturer,
         'period_from':  period_from,
         'period_to':    period_to,
-        'hist_from':    hist_from,
-        'hist_to':      hist_to,
         'mfr_events':   mfr_total,
         'grand_total':  grand_total,
         'level_label':  level_label,
         'grain_label':  grain_label,
         'top5':            top5,
-        'historical':      historical,
         'current_period':  current_period,
         'trends':          trends,
     }
@@ -1522,114 +1498,6 @@ def render_trend_chart(code, labels, mfr_values, peers_values, manufacturer, gra
     plt.close(fig)
     buf.seek(0)
     return buf
-
-
-def compute_proportions(df_current, df_hist, code, period_from, period_to):
-    """
-    Compute proportion statistics for a specific IMDRF code across combined
-    historical + current period data (all manufacturers).
-
-    Args:
-        df_current: df_exploded for user's selected period
-        df_hist:    df_exploded for preceding 2-year historical period
-        code:       IMDRF code string (e.g., "A05")
-        period_from, period_to: "YYYY-MM-DD" strings (user's specified range)
-
-    Returns:
-        {
-            'total_proportion': float,
-            'total_code_count': int,
-            'total_all_count': int,
-            'period_months': ['YYYY-MM', ...],
-            'monthly': {'YYYY-MM': {'code_count': int, 'total_count': int, 'proportion': float}}
-        }
-    """
-    # Combine both datasets (hist + current)
-    df_combined = pd.concat([df_hist, df_current], ignore_index=True)
-
-    # Exclude A24/A25
-    df_combined = df_combined[
-        ~df_combined['imdrf_prefix'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
-    ]
-
-    total_all_count  = len(df_combined)
-    total_code_count = int((df_combined['imdrf_prefix'] == code).sum())
-    total_proportion = total_code_count / total_all_count if total_all_count > 0 else 0.0
-
-    # Monthly proportions for user's specified period only
-    period_from_ts = pd.Timestamp(period_from)
-    period_to_ts   = pd.Timestamp(period_to)
-
-    df_period = df_combined[
-        (df_combined['parsed_date'] >= period_from_ts) &
-        (df_combined['parsed_date'] <= period_to_ts)
-    ].copy()
-
-    period_months = []
-    monthly = {}
-
-    if not df_period.empty:
-        df_period['_month'] = df_period['parsed_date'].dt.to_period('M').astype(str)
-        full_range   = pd.period_range(start=period_from_ts, end=period_to_ts, freq='M')
-        period_months = [str(p) for p in full_range]
-
-        for month in period_months:
-            df_month   = df_period[df_period['_month'] == month]
-            month_total = len(df_month)
-            month_code  = int((df_month['imdrf_prefix'] == code).sum())
-            monthly[month] = {
-                'code_count':  month_code,
-                'total_count': month_total,
-                'proportion':  month_code / month_total if month_total > 0 else 0.0,
-            }
-
-    return {
-        'total_proportion': total_proportion,
-        'total_code_count': total_code_count,
-        'total_all_count':  total_all_count,
-        'period_months':    period_months,
-        'monthly':          monthly,
-    }
-
-
-def get_hist_code_table(df_hist):
-    """
-    Compute a code distribution table from the historical (2-year) dataset.
-
-    For each IMDRF prefix found in df_hist, returns its event count and
-    proportion relative to the total events in the dataset.
-
-    Args:
-        df_hist: df_exploded produced by prepare_data_for_insights()
-
-    Returns:
-        {
-            'total_events': int,
-            'rows': [
-                {'code': str, 'count': int, 'proportion': float},
-                ...
-            ]  -- sorted by count descending
-        }
-    """
-    # Exclude A24/A25
-    df = df_hist[
-        ~df_hist['imdrf_prefix'].astype(str).str[:3].str.upper().isin(EXCLUDED_IMDRF_L1_PREFIXES)
-    ].copy()
-
-    total_events = len(df)
-    if total_events == 0:
-        return {'total_events': 0, 'rows': []}
-
-    counts = df['imdrf_prefix'].value_counts()
-    rows = [
-        {
-            'code':       code,
-            'count':      int(cnt),
-            'proportion': round(int(cnt) / total_events, 6),
-        }
-        for code, cnt in counts.items()
-    ]
-    return {'total_events': total_events, 'rows': rows}
 
 
 def build_report_pdf(report_data, chart_images):
@@ -1732,33 +1600,8 @@ def build_report_pdf(report_data, chart_images):
         story.append(make_table(rows, col_w, header))
     story.append(Spacer(1, 12))
 
-    # ── Section 2: Historical Baseline ────────────────────────────────────
-    story.append(Paragraph('2. Historical Baseline', h2_style))
-
-    hist_from = report_data['hist_from']
-    hist_to   = report_data['hist_to']
-    hist_intro = (
-        f"Using historical data of the preceding 2 years "
-        f"(<b>{hist_from}</b> to <b>{hist_to}</b>), "
-        f"the average proportion of events for the top five codes are calculated. "
-        f"The results are as follows:"
-    )
-    story.append(Paragraph(hist_intro, body_style))
-
-    if report_data['historical']:
-        col_w = [page_width * 0.25, page_width * 0.4, page_width * 0.35]
-        header = ['Code', 'Total Events (2-yr, All Mfrs)', 'Average Proportion (All Events)']
-        rows = [
-            [e['code'],
-             str(e['hist_total']),
-             f"{e['hist_proportion']*100:.2f}%"]
-            for e in report_data['historical']
-        ]
-        story.append(make_table(rows, col_w, header))
-    story.append(Spacer(1, 12))
-
-    # ── Current period table (all manufacturers) ──────────────────────────
-    story.append(Paragraph('Selected Period Distribution (All Manufacturers)', h2_style))
+    # ── Section 2: Selected Period Distribution ───────────────────────────
+    story.append(Paragraph('2. Selected Period Distribution (All Manufacturers)', h2_style))
     period_intro = (
         f"The table below shows the total event counts and proportion for each code "
         f"across <b>all manufacturers</b> during the selected period "
@@ -1779,6 +1622,7 @@ def build_report_pdf(report_data, chart_images):
 
     # ── Section 3: Trend Charts ────────────────────────────────────────────
     story.append(Paragraph('3. Trend Analysis', h2_style))
+
 
     trend_intro = (
         f"An analysis of the trend was done on a <b>{grain_lbl.lower()}</b> basis "
@@ -2140,7 +1984,287 @@ def render_detailed_patient_problems_bar(pp_counts, top_n=10):
     return buf
 
 
-def build_detailed_report_pdf(report_data, chart_images):
+def _fmt_audit_num(n):
+    """Format a number with comma separators for audit display."""
+    if n is None:
+        return 'N/A'
+    try:
+        return f'{int(n):,}'
+    except (TypeError, ValueError):
+        return str(n)
+
+
+def _build_audit_section(story, audit, h1_style, h2_style, body_style,
+                          note_style, navy, teal, light_bg, mid_bg, page_w,
+                          make_table, PageBreak, Paragraph, Spacer, HRFlowable,
+                          Table, TableStyle, colors, cm, styles):
+    """Render the Data Processing Audit as a full section in the PDF report."""
+    from datetime import datetime as _dt
+    from reportlab.lib.styles import ParagraphStyle
+
+    audit_h2 = h2_style
+
+    # ── Section header ────────────────────────────────────────────────────────
+    story.append(Paragraph('Data Processing Audit', h1_style))
+    story.append(HRFlowable(width='100%', thickness=1, color=navy, spaceAfter=8))
+    story.append(Paragraph(
+        "This section documents the complete data processing pipeline that was executed "
+        "to produce the dataset analysed in this report. It includes record counts at each "
+        "stage, cleaning operations performed, IMDRF code mapping results, and validation outcomes.",
+        body_style,
+    ))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # ── Pipeline Run Information ──────────────────────────────────────────────
+    run_at = audit.get('run_at', '')
+    if run_at:
+        try:
+            dt_val = _dt.fromisoformat(run_at)
+            run_at = dt_val.strftime('%d %B %Y, %H:%M:%S UTC')
+        except Exception:
+            pass
+
+    pipeline_type = audit.get('pipeline_type', 'N/A')
+    type_label = {
+        'raw':   'Raw (Download only)',
+        'clean': 'Clean (Download + Process)',
+        'full':  'Full (Download + Process + IMDRF Code Counts)',
+    }.get(pipeline_type, pipeline_type)
+
+    info_rows = [
+        ['Pipeline Executed', run_at or 'N/A'],
+        ['Product Code', audit.get('product_code', 'N/A')],
+        ['Date Range', f"{audit.get('date_from', 'N/A')}  to  {audit.get('date_to', 'N/A')}"],
+        ['Pipeline Type', type_label],
+    ]
+    info_tbl = Table(info_rows, colWidths=[page_w * 0.35, page_w * 0.65])
+    info_tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (0, -1), mid_bg),
+        ('FONTNAME',      (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE',      (0, 0), (-1, -1), 9),
+        ('ALIGN',         (0, 0), (-1, -1), 'LEFT'),
+        ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor('#b0c4de')),
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+    ]))
+    story.append(info_tbl)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # ── Data Source & Download ────────────────────────────────────────────────
+    story.append(Paragraph('Data Source &amp; Download', audit_h2))
+    total_found = audit.get('total_records_found')
+    raw_dl = audit.get('raw_records_downloaded') or total_found
+    source_rows = [
+        ['Total Records Found (openFDA)', _fmt_audit_num(total_found)],
+        ['Records Downloaded', _fmt_audit_num(raw_dl)],
+    ]
+    story.append(make_table(
+        ['Metric', 'Count'],
+        source_rows,
+        [page_w * 0.55, page_w * 0.45],
+    ))
+    story.append(Spacer(1, 0.3 * cm))
+
+    stats = audit.get('stats')
+    if not stats:
+        story.append(Paragraph(
+            '<i>Pipeline type was "Raw" — no cleaning or mapping steps were performed.</i>',
+            note_style,
+        ))
+        story.append(PageBreak())
+        return
+
+    # ── Data Cleaning ─────────────────────────────────────────────────────────
+    story.append(Paragraph('Data Cleaning', audit_h2))
+    orig = stats.get('original_rows', 0)
+    final = stats.get('final_rows', 0)
+    rows_by_reason_for_sum = stats.get('rows_removed_by_reason', []) or []
+    removed_actual = sum(int(e.get('count', 0) or 0) for e in rows_by_reason_for_sum)
+    # Rows after cleaning (semicolon-split expansion) but before removal step.
+    # Pipeline runs removal first then expansion, but we present the user-facing
+    # narrative as: initial → expanded → removed → final.
+    after_cleaning = final + removed_actual
+
+    clean_rows = [
+        ['Initial Row Count', _fmt_audit_num(orig)],
+        ['Rows After Cleaning (Increased to)', _fmt_audit_num(after_cleaning)],
+        ['Rows Removed', _fmt_audit_num(removed_actual)],
+        ['Final Row Count', _fmt_audit_num(final)],
+    ]
+    story.append(make_table(
+        ['Metric', 'Count'],
+        clean_rows,
+        [page_w * 0.55, page_w * 0.45],
+    ))
+    story.append(Spacer(1, 0.2 * cm))
+
+    # Row removal breakdown
+    rows_by_reason = stats.get('rows_removed_by_reason', [])
+    if rows_by_reason:
+        story.append(Paragraph('Row Removal Breakdown:', body_style))
+        reason_rows = [
+            [entry['reason'], _fmt_audit_num(entry['count'])]
+            for entry in rows_by_reason
+        ]
+        story.append(make_table(
+            ['Reason', 'Rows Removed'],
+            reason_rows,
+            [page_w * 0.70, page_w * 0.30],
+        ))
+        story.append(Spacer(1, 0.2 * cm))
+
+    # Column changes
+    orig_cols = stats.get('original_cols', 0)
+    final_cols = stats.get('final_cols', 0)
+    cols_removed = stats.get('cols_removed', [])
+
+    col_rows = [
+        ['Columns Before Cleaning', str(orig_cols)],
+        ['Columns After Cleaning', str(final_cols)],
+        ['Columns Removed', str(len(cols_removed)) if cols_removed else '0'],
+        ['Column Added', 'IMDRF Code (inserted adjacent to Device Problem)'],
+    ]
+    story.append(make_table(
+        ['Metric', 'Value'],
+        col_rows,
+        [page_w * 0.55, page_w * 0.45],
+    ))
+
+    if cols_removed:
+        col_list_style = ParagraphStyle('AuditColList', parent=styles['Normal'],
+                                         fontSize=8, textColor=colors.HexColor('#555555'),
+                                         leading=11, spaceAfter=4)
+        story.append(Spacer(1, 0.1 * cm))
+        story.append(Paragraph(
+            f"<b>Removed columns:</b> {', '.join(cols_removed)}",
+            col_list_style,
+        ))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # ── IMDRF Code Mapping ────────────────────────────────────────────────────
+    imdrf_stats = stats.get('imdrf_stats', {})
+    if imdrf_stats:
+        story.append(Paragraph('IMDRF Code Mapping', audit_h2))
+        map_rows = [
+            ['Non-empty Device Problems', _fmt_audit_num(imdrf_stats.get('non_empty_device_problems', 0))],
+            ['IMDRF Codes Mapped', _fmt_audit_num(imdrf_stats.get('mapped', 0))],
+            ['Unmapped (left blank)', _fmt_audit_num(imdrf_stats.get('unmapped', 0))],
+        ]
+        story.append(make_table(
+            ['Metric', 'Count'],
+            map_rows,
+            [page_w * 0.55, page_w * 0.45],
+        ))
+        story.append(Spacer(1, 0.3 * cm))
+
+    # ── A24/A25 Exclusion ─────────────────────────────────────────────────────
+    a24_a25_desc = audit.get('a24_a25_excluded', {})
+    a24_a25_count = audit.get('a24_a25_row_count', 0)
+    if a24_a25_desc:
+        story.append(Paragraph('Excluded IMDRF Codes (A24 / A25 Filter)', audit_h2))
+        story.append(Paragraph(
+            f"Rows with A24/A25 IMDRF codes excluded from Code Counts output: "
+            f"<b>{_fmt_audit_num(a24_a25_count)}</b>",
+            body_style,
+        ))
+        excl_rows = [
+            [code, desc]
+            for code, desc in sorted(a24_a25_desc.items())
+        ]
+        if excl_rows:
+            story.append(make_table(
+                ['IMDRF Code', 'Description'],
+                excl_rows,
+                [page_w * 0.20, page_w * 0.80],
+            ))
+        story.append(Paragraph(
+            '<i>These codes are excluded per standard IMDRF analysis practice.</i>',
+            note_style,
+        ))
+        story.append(Spacer(1, 0.3 * cm))
+
+    # ── Per-Level Code Count Summary ──────────────────────────────────────────
+    level_summary = audit.get('level_summary', {})
+    if level_summary:
+        story.append(Paragraph('IMDRF Code Count Summary (Per Level)', audit_h2))
+        lvl_rows = []
+        for lvl in ['1', '2', '3']:
+            lvl_data = level_summary.get(lvl, {})
+            lvl_rows.append([
+                f'Level {lvl}',
+                _fmt_audit_num(lvl_data.get('distinct_codes', 0)),
+                _fmt_audit_num(lvl_data.get('total_instances', 0)),
+            ])
+        story.append(make_table(
+            ['Level', 'Distinct Codes', 'Total Occurrences'],
+            lvl_rows,
+            [page_w * 0.30, page_w * 0.35, page_w * 0.35],
+        ))
+        story.append(Spacer(1, 0.3 * cm))
+
+    # ── Manufacturer Summary ──────────────────────────────────────────────────
+    mfr_list = stats.get('manufacturer_list', [])
+    if mfr_list:
+        story.append(Paragraph('Manufacturers', audit_h2))
+        story.append(Paragraph(
+            f"Total unique manufacturers identified in the cleaned dataset: "
+            f"<b>{_fmt_audit_num(len(mfr_list))}</b>",
+            body_style,
+        ))
+        story.append(Spacer(1, 0.2 * cm))
+
+    # ── Validation Results ────────────────────────────────────────────────────
+    validation = stats.get('validation', {})
+    if validation:
+        story.append(Paragraph('Validation Results', audit_h2))
+        pass_color = colors.HexColor('#2e7d32')
+        fail_color = colors.HexColor('#c62828')
+        checks = [
+            ('Column Count Check',    'column_count_correct'),
+            ('No Timestamps Check',   'no_timestamps'),
+            ('Date Format Check',     'date_format_correct'),
+            ('IMDRF Adjacency Check', 'imdrf_adjacent'),
+            ('IMDRF Codes Valid',     'imdrf_codes_valid'),
+            ('File Integrity Check',  'file_will_open'),
+        ]
+        all_passed = True
+        val_rows = []
+        for label, key in checks:
+            val = validation.get(key)
+            if val is None:
+                status_str = 'N/A'
+                status_para = Paragraph('N/A', ParagraphStyle('ValNA', parent=styles['Normal'],
+                                        fontSize=9, textColor=colors.grey))
+            elif val:
+                status_str = 'PASSED'
+                status_para = Paragraph('<b>PASSED</b>', ParagraphStyle('ValPass',
+                                        parent=styles['Normal'], fontSize=9, textColor=pass_color))
+            else:
+                status_str = 'FAILED'
+                all_passed = False
+                status_para = Paragraph('<b>FAILED</b>', ParagraphStyle('ValFail',
+                                        parent=styles['Normal'], fontSize=9, textColor=fail_color))
+            val_rows.append([label, status_para])
+
+        story.append(make_table(
+            ['Check', 'Result'],
+            val_rows,
+            [page_w * 0.60, page_w * 0.40],
+        ))
+        story.append(Spacer(1, 0.2 * cm))
+
+        overall_text = 'ALL CHECKS PASSED' if all_passed else 'ONE OR MORE CHECKS FAILED'
+        overall_color = pass_color if all_passed else fail_color
+        overall_style = ParagraphStyle('ValOverall', parent=styles['Normal'],
+                                        fontSize=10, fontName='Helvetica-Bold',
+                                        textColor=overall_color)
+        story.append(Paragraph(f"Overall: {overall_text}", overall_style))
+
+    story.append(PageBreak())
+
+
+def build_detailed_report_pdf(report_data, chart_images, audit_data=None):
     """
     Build the PSUR-style detailed IMDRF analysis PDF using ReportLab.
 
@@ -2148,6 +2272,8 @@ def build_detailed_report_pdf(report_data, chart_images):
         report_data:   dict returned by compute_detailed_report_data()
         chart_images:  dict with optional BytesIO keys:
                        'yoy_bar', 'total_bar', 'patient_problems_bar'
+        audit_data:    optional dict from the pipeline job containing processing
+                       audit information (data source, cleaning stats, validation, etc.)
 
     Returns:
         bytes — raw PDF content
@@ -2334,6 +2460,13 @@ def build_detailed_report_pdf(report_data, chart_images):
     ]))
     story.append(meta_tbl)
     story.append(PageBreak())
+
+    # ── Data Processing Audit Section ─────────────────────────────────────────
+    if audit_data:
+        _build_audit_section(story, audit_data, h1_style, h2_style, body_style,
+                             note_style, navy, teal, light_bg, mid_bg, page_w,
+                             make_table, PageBreak, Paragraph, Spacer, HRFlowable,
+                             Table, TableStyle, colors, cm, styles)
 
     # ── Section 1 — Top IMDRF Code Families ──────────────────────────────────
     story.append(Paragraph('1. Top IMDRF Code Families', h1_style))

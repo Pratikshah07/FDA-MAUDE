@@ -610,6 +610,7 @@ def api_prepare_insights_from_pipeline():
         session[f'insights_file_{file_id}'] = {
             'path': cleaned_path,
             'merge_log': result.get('merge_log', []),
+            'job_id': job_id,
         }
 
         return jsonify({
@@ -1591,7 +1592,6 @@ def imdrf_insights_generate_pdf():
         return jsonify({'error': 'Invalid request body'}), 400
 
     file_id      = data.get('file_id', '').strip()
-    hist_file_id = data.get('hist_file_id', '').strip()
     manufacturer = data.get('manufacturer', '').strip()
     code_filter  = (data.get('code', 'ALL') or 'ALL').strip()
     period_from  = data.get('period_from', '')   # "YYYY-MM-DD"
@@ -1599,29 +1599,23 @@ def imdrf_insights_generate_pdf():
     grain        = data.get('grain', 'M')
     level        = int(data.get('level', 1))
 
-    if not file_id or not hist_file_id:
-        return jsonify({'error': 'Missing file_id or hist_file_id'}), 400
+    if not file_id:
+        return jsonify({'error': 'Missing file_id'}), 400
     if not manufacturer:
         return jsonify({'error': 'Manufacturer is required'}), 400
     if not period_from or not period_to:
         return jsonify({'error': 'Period dates are required'}), 400
 
-    # Load file paths from session
+    # Load file path from session
     main_meta = session.get(f'insights_file_{file_id}')
-    hist_meta = session.get(f'insights_file_{hist_file_id}')
 
     if not main_meta:
         return jsonify({'error': 'Current period data not found. Please reload your data.'}), 404
-    if not hist_meta:
-        return jsonify({'error': 'Historical data not found. Please try generating the report again.'}), 404
 
     main_path = main_meta.get('path') if isinstance(main_meta, dict) else main_meta
-    hist_path = hist_meta.get('path') if isinstance(hist_meta, dict) else hist_meta
 
     if not main_path or not os.path.exists(main_path):
         return jsonify({'error': 'Current period file not found. Please reload your data.'}), 404
-    if not hist_path or not os.path.exists(hist_path):
-        return jsonify({'error': 'Historical data file not found. Please try again.'}), 404
 
     try:
         from backend.imdrf_insights import (
@@ -1632,21 +1626,17 @@ def imdrf_insights_generate_pdf():
         )
 
         main_result = prepare_data_for_insights(main_path, level=level)
-        hist_result = prepare_data_for_insights(hist_path, level=level)
 
         df_current = main_result['df_exploded']
-        df_hist    = hist_result['df_exploded']
         mfr_col    = main_result.get('mfr_col') or '_manufacturer'
 
         # Ensure manufacturer column exists
         if mfr_col not in df_current.columns:
             df_current['_manufacturer'] = 'All Data'
             mfr_col = '_manufacturer'
-        if mfr_col not in df_hist.columns:
-            df_hist[mfr_col] = 'All Data'
 
         report_data = compute_report_data(
-            df_current, df_hist, mfr_col, manufacturer,
+            df_current, mfr_col, manufacturer,
             code_filter, period_from, period_to, grain, level
         )
 
@@ -1775,7 +1765,15 @@ def imdrf_insights_generate_detailed_report():
             chart_images['patient_problems_bar'] = render_detailed_patient_problems_bar(
                 report_data['patient_problems'])
 
-        pdf_bytes = build_detailed_report_pdf(report_data, chart_images)
+        # Retrieve audit_data from the pipeline job if available
+        audit_data = None
+        _job_id = file_meta.get('job_id') if isinstance(file_meta, dict) else None
+        if _job_id:
+            _job = _get_pipeline_job(_job_id)
+            if _job:
+                audit_data = _job.get('audit_data')
+
+        pdf_bytes = build_detailed_report_pdf(report_data, chart_images, audit_data=audit_data)
 
         filename = f"IMDRF_Detailed_Report_{year_from}_{year_to}.pdf"
         return send_file(
@@ -1785,91 +1783,6 @@ def imdrf_insights_generate_detailed_report():
             download_name=filename,
         )
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/imdrf-insights/compute-proportions', methods=['POST'])
-@login_required
-def imdrf_insights_compute_proportions():
-    """Compute proportion of a specific IMDRF code across combined historical + current period."""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Invalid request body'}), 400
-
-    file_id      = data.get('file_id', '').strip()
-    hist_file_id = data.get('hist_file_id', '').strip()
-    code         = data.get('code', '').strip()
-    period_from  = data.get('period_from', '')
-    period_to    = data.get('period_to', '')
-    level        = int(data.get('level', 1))
-
-    if not file_id or not hist_file_id:
-        return jsonify({'error': 'Missing file_id or hist_file_id'}), 400
-    if not code or code.upper() == 'ALL':
-        return jsonify({'error': 'A specific event code is required (not ALL)'}), 400
-    if not period_from or not period_to:
-        return jsonify({'error': 'Period dates are required'}), 400
-
-    main_meta = session.get(f'insights_file_{file_id}')
-    hist_meta = session.get(f'insights_file_{hist_file_id}')
-    if not main_meta:
-        return jsonify({'error': 'Current period data not found. Please reload your data.'}), 404
-    if not hist_meta:
-        return jsonify({'error': 'Historical data not found. Please generate the report first.'}), 404
-
-    main_path = main_meta.get('path') if isinstance(main_meta, dict) else main_meta
-    hist_path = hist_meta.get('path') if isinstance(hist_meta, dict) else hist_meta
-
-    if not main_path or not os.path.exists(main_path):
-        return jsonify({'error': 'Current period file not found. Please reload your data.'}), 404
-    if not hist_path or not os.path.exists(hist_path):
-        return jsonify({'error': 'Historical data file not found. Please try again.'}), 404
-
-    try:
-        from backend.imdrf_insights import prepare_data_for_insights, compute_proportions
-
-        main_result = prepare_data_for_insights(main_path, level=level)
-        hist_result = prepare_data_for_insights(hist_path, level=level)
-
-        result = compute_proportions(
-            main_result['df_exploded'],
-            hist_result['df_exploded'],
-            code, period_from, period_to
-        )
-        return jsonify(result)
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/imdrf-insights/hist-code-table', methods=['POST'])
-@login_required
-def imdrf_insights_hist_code_table():
-    """Return IMDRF code distribution table for the historical (2-year) dataset."""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Invalid request body'}), 400
-
-    hist_file_id = data.get('hist_file_id', '').strip()
-    level        = int(data.get('level', 1))
-
-    if not hist_file_id:
-        return jsonify({'error': 'Missing hist_file_id'}), 400
-
-    hist_meta = session.get(f'insights_file_{hist_file_id}')
-    if not hist_meta:
-        return jsonify({'error': 'Historical data not found in session. Please reload.'}), 404
-
-    hist_path = hist_meta.get('path') if isinstance(hist_meta, dict) else hist_meta
-    if not hist_path or not os.path.exists(hist_path):
-        return jsonify({'error': 'Historical data file not found on disk.'}), 404
-
-    try:
-        from backend.imdrf_insights import prepare_data_for_insights, get_hist_code_table
-        hist_result = prepare_data_for_insights(hist_path, level=level)
-        result = get_hist_code_table(hist_result['df_exploded'])
-        return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
