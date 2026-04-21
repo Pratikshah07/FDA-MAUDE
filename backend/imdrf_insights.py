@@ -479,22 +479,8 @@ def prepare_data_for_insights(file_path, level=1, annex_file_path=None):
         - date_col: Name of the date column used
         - level: The analysis level used
     """
-    # Read file (CSV or Excel)
-    import os
-    file_ext = os.path.splitext(file_path)[1].lower()
-
-    if file_ext in ['.xlsx', '.xls']:
-        df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
-    elif file_ext == '.csv':
-        df = pd.read_csv(file_path, dtype=str, encoding="utf-8",
-                         on_bad_lines="skip", keep_default_na=False)
-    else:
-        raise ValueError(f"Unsupported file format: {file_ext}. Please upload CSV, XLS, or XLSX file.")
-
-    # Clean up string columns
-    for col in df.columns:
-        df[col] = df[col].astype(str).str.strip()
-        df[col] = df[col].replace({"nan": "", "NaN": "", "None": "", "NaT": "", "<NA>": ""})
+    # Read file (CSV or Excel) — uses chunked-CSV path for lower peak RAM.
+    df = _load_cleaned_dataframe(file_path)
 
     # Find required columns using flexible matching
     imdrf_col = find_imdrf_column(df)
@@ -619,25 +605,49 @@ def prepare_data_for_insights(file_path, level=1, annex_file_path=None):
 
 
 def _load_cleaned_dataframe(file_path: str) -> pd.DataFrame:
-    """Load a cleaned MAUDE file into a DataFrame with string values."""
+    """Load a cleaned MAUDE file into a DataFrame with string values.
+
+    CSV path streams the file in chunks and normalizes each chunk before
+    concat, so peak memory is bounded by the chunk size rather than the full
+    raw-file buffer plus DataFrame. Excel has no chunked reader, so it still
+    loads in one shot.
+    """
+    import gc as _gc
     file_ext = os.path.splitext(file_path)[1].lower()
 
     if file_ext in ['.xlsx', '.xls']:
         # keep_default_na=False prevents pandas from silently converting strings
         # like "NA", "N/A", "null" to float NaN — keeps them as literal strings.
         df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
-    elif file_ext == '.csv':
-        df = pd.read_csv(file_path, dtype=str, encoding="utf-8",
-                         on_bad_lines="skip", keep_default_na=False)
-    else:
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip().replace(
+                {"nan": "", "NaN": "", "None": "", "NaT": "", "<NA>": ""})
+        return df
+
+    if file_ext != '.csv':
         raise ValueError(f"Unsupported file format: {file_ext}. Please upload CSV, XLS, or XLSX file.")
 
-    for col in df.columns:
-        # Force every cell to a plain Python str, then strip whitespace.
-        # astype(str) converts residual float NaN → "nan"; replace removes it.
-        df[col] = df[col].astype(str).str.strip()
-        df[col] = df[col].replace({"nan": "", "NaN": "", "None": "", "NaT": "", "<NA>": ""})
+    pieces = []
+    reader = pd.read_csv(file_path, dtype=str, encoding="utf-8",
+                         on_bad_lines="skip", keep_default_na=False,
+                         chunksize=10000)
+    try:
+        for chunk in reader:
+            for col in chunk.columns:
+                chunk[col] = chunk[col].astype(str).str.strip().replace(
+                    {"nan": "", "NaN": "", "None": "", "NaT": "", "<NA>": ""})
+            pieces.append(chunk)
+    finally:
+        try:
+            reader.close()
+        except Exception:
+            pass
 
+    if not pieces:
+        return pd.DataFrame()
+    df = pd.concat(pieces, ignore_index=True, copy=False)
+    pieces.clear()
+    _gc.collect()
     return df
 
 

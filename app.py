@@ -4,6 +4,7 @@ Flask application for MAUDE data processing web interface with authentication.
 import os
 import json
 import csv
+import gc
 import re
 import time
 import threading
@@ -54,6 +55,37 @@ MAUDE_EXPORT_JOBS = {}
 MAUDE_EXPORT_LOCK = threading.Lock()
 PIPELINE_JOBS = {}
 PIPELINE_JOBS_LOCK = threading.Lock()
+
+# Single-flight semaphore: only one heavy pipeline stage (clean/analyze) runs at
+# a time across all users. Prevents concurrent 200+ MB DataFrame loads from
+# tripping Render's 512 MB cap. Downloads/probes run freely.
+HEAVY_WORK_SEMAPHORE = threading.Semaphore(1)
+
+# Finished-job TTL: drop jobs older than this from the in-memory dict so their
+# DataFrames/stats can be garbage-collected. Status/download still work via the
+# on-disk JSON written by _save_job_file.
+JOB_TTL_SECONDS = 3600  # 1 hour
+
+
+def _evict_stale_jobs(job_dict, lock):
+    """Evict jobs whose last update is older than JOB_TTL_SECONDS.
+
+    Called opportunistically from status/download endpoints — no background
+    thread needed. Only removes in-memory entries; on-disk JSON stays so the
+    frontend can still fetch status after eviction.
+    """
+    now = time.time()
+    cutoff = now - JOB_TTL_SECONDS
+    with lock:
+        stale = [
+            jid for jid, job in job_dict.items()
+            if (job.get('_last_touch') or 0) < cutoff
+            and job.get('status') in ('done', 'failed')
+        ]
+        for jid in stale:
+            job_dict.pop(jid, None)
+    if stale:
+        gc.collect()
 
 # Firebase config (available to all templates via context processor)
 app.config['FIREBASE_CONFIG'] = FIREBASE_CONFIG
@@ -106,6 +138,7 @@ def _set_job_status(job_id, **updates):
     with PROCESS_JOBS_LOCK:
         job = PROCESS_JOBS.setdefault(job_id, {})
         job.update(updates)
+        job['_last_touch'] = time.time()
         _save_job_file('process', job_id, job)
 
 
@@ -127,6 +160,7 @@ def _set_export_status(job_id, **updates):
             existing_scanned = job.get('scanned') or 0
             updates['scanned'] = max(existing_scanned, updates.get('scanned') or 0)
         job.update(updates)
+        job['_last_touch'] = time.time()
         _save_job_file('export', job_id, job)
 
 
@@ -148,6 +182,7 @@ def _set_pipeline_status(job_id, **updates):
             existing_scanned = job.get('scanned') or 0
             updates['scanned'] = max(existing_scanned, updates.get('scanned') or 0)
         job.update(updates)
+        job['_last_touch'] = time.time()
         _save_job_file('pipeline', job_id, job)
 
 
@@ -184,9 +219,54 @@ def _load_job_file(prefix: str, job_id: str):
         return None
 
 
+def _read_full_string_df(file_path, chunk_size=10000):
+    """Load a CSV/Excel file as an all-string DataFrame with minimal peak RAM.
+
+    Why chunked: a plain ``pd.read_csv`` holds the entire raw file buffer PLUS
+    the resulting DataFrame in memory at once. We stream in chunks, strip and
+    normalize each chunk in place, then concat once at the end. Peak memory is
+    bounded by ``chunk_size`` instead of the whole file. For Excel we fall back
+    to a single read (openpyxl has no chunked API).
+    """
+    import pandas as _pd
+    file_ext = os.path.splitext(file_path)[1].lower()
+
+    if file_ext in ['.xlsx', '.xls']:
+        df = _pd.read_excel(file_path, dtype=str, keep_default_na=False)
+        for _col in df.columns:
+            df[_col] = df[_col].astype(str).str.strip().replace(
+                {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+        return df
+
+    # CSV path: stream through chunks, normalize each, then concat.
+    pieces = []
+    reader = _pd.read_csv(file_path, dtype=str, encoding='utf-8',
+                          on_bad_lines='skip', keep_default_na=False,
+                          chunksize=chunk_size)
+    try:
+        for chunk in reader:
+            for _col in chunk.columns:
+                chunk[_col] = chunk[_col].astype(str).str.strip().replace(
+                    {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+            pieces.append(chunk)
+    finally:
+        try:
+            reader.close()
+        except Exception:
+            pass
+
+    if not pieces:
+        return _pd.DataFrame()
+    df = _pd.concat(pieces, ignore_index=True, copy=False)
+    pieces.clear()
+    gc.collect()
+    return df
+
+
 @app.route('/api/maude/export/status/<job_id>', methods=['GET'])
 @login_required
 def maude_export_status(job_id):
+    _evict_stale_jobs(MAUDE_EXPORT_JOBS, MAUDE_EXPORT_LOCK)
     job = _get_export_job(job_id)
     if not job or job.get('user_id') != current_user.id:
         return jsonify({'error': 'Job not found'}), 404
@@ -275,6 +355,7 @@ def _run_processing_job(job_id, input_path, output_path, output_filename, imdrf_
 @app.route('/process/status/<job_id>', methods=['GET'])
 @login_required
 def process_status(job_id):
+    _evict_stale_jobs(PROCESS_JOBS, PROCESS_JOBS_LOCK)
     job = _get_job(job_id)
     if not job or job.get('user_id') != current_user.id:
         return jsonify({'error': 'Job not found'}), 404
@@ -940,17 +1021,7 @@ def api_download_code_counts_xlsx():
         from backend.parent_company_map import apply_parent_map
 
         # Load file and apply parent company map so XLSX reflects merged names
-        import pandas as _pd
-        _file_ext = os.path.splitext(file_path)[1].lower()
-        if _file_ext in ['.xlsx', '.xls']:
-            _raw_df = _pd.read_excel(file_path, dtype=str, keep_default_na=False)
-        else:
-            _raw_df = _pd.read_csv(file_path, dtype=str, encoding='utf-8',
-                                   on_bad_lines='skip', keep_default_na=False)
-        for _col in _raw_df.columns:
-            _raw_df[_col] = _raw_df[_col].astype(str).str.strip()
-            _raw_df[_col] = _raw_df[_col].replace(
-                {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+        _raw_df = _read_full_string_df(file_path)
         _mfr_col_dl = find_manufacturer_column(_raw_df)
         if _mfr_col_dl:
             norm_df, _dl_merge_log = apply_parent_map(_raw_df, _mfr_col_dl)
@@ -1229,6 +1300,15 @@ def api_download_code_counts_xlsx():
         wb.save(output)
         output.seek(0)
 
+        # Free the big DataFrames now that the workbook is serialized.
+        # This thread may sit in send_file for seconds while streaming the
+        # response — no need to keep ~100 MB of df objects alive meanwhile.
+        try:
+            del _raw_df, norm_df, mfr_monthly, pat_mfr_monthly, summary_counts, summary_monthly
+        except NameError:
+            pass
+        gc.collect()
+
         return send_file(
             output,
             as_attachment=True,
@@ -1273,18 +1353,8 @@ def api_download_top5_grand_total_xlsx():
             parse_flexible_date,
         )
         from backend.parent_company_map import apply_parent_map
-        import pandas as _pd
 
-        _file_ext = os.path.splitext(file_path)[1].lower()
-        if _file_ext in ['.xlsx', '.xls']:
-            _raw_df = _pd.read_excel(file_path, dtype=str, keep_default_na=False)
-        else:
-            _raw_df = _pd.read_csv(file_path, dtype=str, encoding='utf-8',
-                                   on_bad_lines='skip', keep_default_na=False)
-        for _col in _raw_df.columns:
-            _raw_df[_col] = _raw_df[_col].astype(str).str.strip()
-            _raw_df[_col] = _raw_df[_col].replace(
-                {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+        _raw_df = _read_full_string_df(file_path)
         _mfr_col = find_manufacturer_column(_raw_df)
         if _mfr_col:
             norm_df, _ = apply_parent_map(_raw_df, _mfr_col)
@@ -1467,6 +1537,12 @@ def api_download_top5_grand_total_xlsx():
         wb.save(output)
         output.seek(0)
 
+        try:
+            del _raw_df, norm_df
+        except NameError:
+            pass
+        gc.collect()
+
         if do_yearly:
             dl_name = f'imdrf_top5_{year_from}_{year_to}_yearwise.xlsx'
         else:
@@ -1519,17 +1595,8 @@ def api_top5_yearly_chart_data():
             find_manufacturer_column,
         )
         from backend.parent_company_map import apply_parent_map
-        import pandas as _pd
 
-        _ext = os.path.splitext(file_path)[1].lower()
-        if _ext in ['.xlsx', '.xls']:
-            norm_df = _pd.read_excel(file_path, dtype=str, keep_default_na=False)
-        else:
-            norm_df = _pd.read_csv(file_path, dtype=str, encoding='utf-8',
-                                   on_bad_lines='skip', keep_default_na=False)
-        for _col in norm_df.columns:
-            norm_df[_col] = norm_df[_col].astype(str).str.strip().replace(
-                {'nan': '', 'NaN': '', 'None': '', 'NaT': '', '<NA>': ''})
+        norm_df = _read_full_string_df(file_path)
         _mfr_col = find_manufacturer_column(norm_df)
         if _mfr_col:
             norm_df, _ = apply_parent_map(norm_df, _mfr_col)
@@ -1654,6 +1721,13 @@ def imdrf_insights_generate_pdf():
             chart_images.append(buf)
 
         pdf_bytes = build_report_pdf(report_data, chart_images)
+
+        # Free the big exploded DataFrame before we stream the PDF back.
+        try:
+            del df_current, main_result, report_data
+        except NameError:
+            pass
+        gc.collect()
 
         safe_mfr = re.sub(r'[^A-Za-z0-9_-]', '_', manufacturer)[:30]
         filename  = f"IMDRF_Report_{safe_mfr}_{period_from}_{period_to}.pdf"
@@ -2531,8 +2605,13 @@ def _maude_generate_csv(probe, progress_callback=None):
 
         skip_offsets = list(range(limit, total_results, limit))
         if skip_offsets:
-            # Process in batches to limit peak memory (avoid holding ALL pages at once)
-            batch_size = _MAUDE_FETCH_CONCURRENCY * 2
+            # Process in tight batches to cap peak memory. Previously we buffered
+            # _MAUDE_FETCH_CONCURRENCY * 2 pages — with 1000 records per page,
+            # that's easily 20+ MB of JSON held before anything gets written.
+            # Now we match batch_size to concurrency and pop entries out of
+            # results_by_skip as soon as they're emitted, so the map never
+            # holds more than a handful of page lists at once.
+            batch_size = _MAUDE_FETCH_CONCURRENCY
             for batch_start in range(0, len(skip_offsets), batch_size):
                 batch = skip_offsets[batch_start:batch_start + batch_size]
                 results_by_skip = {}
@@ -2549,10 +2628,14 @@ def _maude_generate_csv(probe, progress_callback=None):
                             results_by_skip[sk] = []
                         if progress_callback:
                             progress_callback(processed, scanned)
-                # Stream this batch in skip order, then free memory
+                # Stream this batch in skip order, popping each page's records
+                # out of the buffer as soon as they're written so the list can
+                # be garbage-collected immediately.
                 for sk in batch:
-                    for chunk in _emit_records(results_by_skip.get(sk, [])):
+                    page_records = results_by_skip.pop(sk, [])
+                    for chunk in _emit_records(page_records):
                         yield chunk
+                    del page_records
                 del results_by_skip
 
         if buffered_rows > 0:
@@ -2978,6 +3061,9 @@ def api_pipeline_start():
         cleaned_path = os.path.join(app.config['UPLOAD_FOLDER'], f"pipeline_cleaned_{job_id}.xlsx")
         ext = 'csv' if pipeline_type == 'raw' else 'xlsx'
         final_path = os.path.join(app.config['UPLOAD_FOLDER'], f"pipeline_final_{job_id}.{ext}")
+        # Tracks whether we've acquired HEAVY_WORK_SEMAPHORE so the finally
+        # block can release it exactly once even on early return / exception.
+        _heavy_lock_held = False
 
         try:
             # Step 0: Probe openFDA to find correct search field/date combination
@@ -3028,6 +3114,14 @@ def api_pipeline_start():
                 return
 
             # Step 2: Clean the CSV
+            # Serialize heavy pandas work: only one concurrent user runs the
+            # clean+analyze stages at a time. Others queue here instead of
+            # triggering parallel 150+ MB DataFrame loads that OOM the 512 MB
+            # dyno. Download step above is NOT gated (it's I/O-bound, low RAM).
+            _set_pipeline_status(job_id, step=2, step_name='Waiting in queue…',
+                                 user_id=job_user_id)
+            HEAVY_WORK_SEMAPHORE.acquire()
+            _heavy_lock_held = True
             _set_pipeline_status(job_id, step=2, step_name='Cleaning data…',
                                  user_id=job_user_id)
             from backend.processor import MAUDEProcessor  # lazy import
@@ -3041,6 +3135,10 @@ def api_pipeline_start():
             processor.phase_callback = _phase_cb
 
             stats = processor.process_file(raw_path, cleaned_path)
+            # Drop the processor (holds internal IMDRF maps + any residual df)
+            # before moving on to step 3's own DataFrame work.
+            del processor
+            gc.collect()
             if 'raw' not in requested_outputs:
                 try:
                     os.remove(raw_path)
@@ -3137,6 +3235,13 @@ def api_pipeline_start():
                     .isin(EXCLUDED_IMDRF_L1_PREFIXES)
                     .sum()
                 )
+
+            # Free the cleaned DataFrame now — all downstream steps (XLSX
+            # building) work off the already-computed counts dicts, not the df.
+            # This is the biggest in-thread allocation; releasing it here drops
+            # ~100-200 MB before we start building the openpyxl workbook.
+            del cleaned_df
+            gc.collect()
 
             # ── Audit: A24/A25 descriptions from Annex ───────────────────────
             _a24_a25_descriptions = {}
@@ -3268,6 +3373,15 @@ def api_pipeline_start():
                         os.remove(p)
                     except Exception:
                         pass
+            # Release the heavy-work slot for the next waiting user (if we held it),
+            # then force a collect so the DataFrames this thread allocated actually
+            # return memory to the OS before the next pipeline starts.
+            if _heavy_lock_held:
+                try:
+                    HEAVY_WORK_SEMAPHORE.release()
+                except Exception:
+                    pass
+            gc.collect()
 
     thread = threading.Thread(target=run_pipeline, args=(user_id,), daemon=True)
     thread.start()
@@ -3282,6 +3396,7 @@ def api_pipeline_start():
 @app.route('/api/pipeline/status/<job_id>', methods=['GET'])
 @login_required
 def api_pipeline_status(job_id):
+    _evict_stale_jobs(PIPELINE_JOBS, PIPELINE_JOBS_LOCK)
     job = _get_pipeline_job(job_id)
     if not job or job.get('user_id') != current_user.id:
         return jsonify({'error': 'Job not found'}), 404
