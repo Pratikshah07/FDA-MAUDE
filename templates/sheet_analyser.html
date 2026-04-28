@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMDRF Prefix Insights | MAUDE Data Processor</title>
+    <title>Sheet Analyser | MAUDE Data Processor</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
@@ -304,9 +304,6 @@
         }
 
         .date-hint {
-            display: flex;
-            align-items: center;
-            gap: 6px;
             font-size: 0.82rem;
             color: #92400e;
             background: rgba(245,158,11,0.1);
@@ -314,6 +311,98 @@
             border-radius: 8px;
             padding: 8px 12px;
             margin-bottom: 18px;
+            line-height: 1.5;
+        }
+        .date-hint i { margin-right: 6px; }
+        .date-hint strong { font-weight: 600; }
+
+        /* ── Styled file drop-zone (matches the txt-to-csv page) ───────── */
+        .file-upload-area {
+            border: 3px dashed var(--border);
+            border-radius: 15px;
+            padding: 36px 20px;
+            text-align: center;
+            background: var(--upload-bg);
+            transition: all 0.25s ease;
+            cursor: pointer;
+            position: relative;
+            margin-bottom: 18px;
+        }
+        .file-upload-area:hover {
+            border-color: var(--primary);
+            background: var(--upload-hover-bg);
+        }
+        .file-upload-area.dragover {
+            border-color: var(--primary);
+            background: var(--upload-hover-bg);
+            transform: scale(1.01);
+        }
+        .file-upload-area input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .upload-icon {
+            font-size: 3rem;
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+        .upload-text {
+            font-size: 1.05rem;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .upload-hint {
+            font-size: 0.86rem;
+            color: var(--text-secondary);
+        }
+        .file-info {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+            padding: 12px 16px;
+            background: var(--metric-bg-start);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        .file-info.show { display: flex; }
+        .file-info .file-icon {
+            font-size: 1.6rem;
+            color: var(--primary);
+        }
+        .file-info .file-details { flex: 1; min-width: 0; }
+        .file-info .file-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .file-info .file-size {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+        .file-info .remove-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .file-info .remove-btn:hover {
+            color: var(--error);
+            border-color: var(--error);
         }
         [data-theme="dark"] .date-hint { color: #fcd34d; background: rgba(245,158,11,0.08); }
 
@@ -836,9 +925,9 @@
                     <i class="fas fa-home"></i>
                     <span>Home</span>
                 </a>
-                <a href="/sheet-analyser" class="nav-btn">
-                    <i class="fas fa-file-import"></i>
-                    <span>Sheet Analyser</span>
+                <a href="/imdrf-insights" class="nav-btn">
+                    <i class="fas fa-chart-line"></i>
+                    <span>IMDRF Insights</span>
                 </a>
                 <a href="/device-recall" class="nav-btn">
                     <i class="fas fa-triangle-exclamation"></i>
@@ -859,68 +948,77 @@
 
         <div class="header">
             <h1>
-                <i class="fas fa-chart-line"></i>
-                IMDRF Code Insights
+                <i class="fas fa-file-import"></i>
+                Sheet Analyser
             </h1>
-            <p class="subtitle">Analyze IMDRF code trends across manufacturers with baseline comparisons</p>
+            <p class="subtitle">Upload your own CSV/XLSX — AI maps the columns and runs the IMDRF trend analysis on it</p>
         </div>
 
         <div class="main-card">
 
-            <!-- ── Step 1: Data Source ────────────────────────────────── -->
+            <!-- ── Step 1: Upload your sheet ─────────────────────────── -->
             <div class="fetch-section">
                 <h2 class="section-title">
-                    <i class="fas fa-database"></i>
-                    Data Source
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    Upload Your Sheet
                 </h2>
 
-                <!-- ── Fetch from FDA MAUDE ─────────────────────────── -->
-                <div id="panelFetch">
-                    <div class="fetch-inputs-grid">
-                        <div class="form-group">
-                            <label for="insightProductCode"><i class="fas fa-barcode"></i> Product Code</label>
-                            <input type="text" id="insightProductCode" placeholder="e.g., FRY">
-                        </div>
-                        <div class="form-group">
-                            <label for="insightYearFrom"><i class="fas fa-calendar-alt"></i> Year From</label>
-                            <input type="number" id="insightYearFrom" placeholder="e.g., 2023" min="2000" max="2035" style="width:100%;">
-                        </div>
-                        <div class="form-group">
-                            <label for="insightYearTo"><i class="fas fa-calendar-alt"></i> Year To</label>
-                            <input type="number" id="insightYearTo" placeholder="e.g., 2025" min="2000" max="2035" style="width:100%;">
-                        </div>
+                <div id="panelUpload">
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <div class="upload-text">Drag &amp; drop your file here</div>
+                        <div class="upload-hint">or click to browse — supports .csv, .xls, .xlsx</div>
+                        <input type="file" id="sheetFileInput" accept=".csv,.xlsx,.xls">
                     </div>
+
+                    <div class="file-info" id="sheetFileInfo">
+                        <i class="fas fa-file-alt file-icon"></i>
+                        <div class="file-details">
+                            <div class="file-name" id="sheetFileName"></div>
+                            <div class="file-size" id="sheetFileSize"></div>
+                        </div>
+                        <button type="button" class="remove-btn" id="sheetRemoveFile" title="Remove file">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
                     <div class="date-hint">
                         <i class="fas fa-info-circle"></i>
-                        Enter a year range (e.g., <strong>2023</strong> to <strong>2025</strong> fetches data from Jan 1, 2023 to Jan 1, 2025). Previous 2-year baseline will be auto-fetched in the background.
+                        Upload a cleaned sheet that contains an <strong>IMDRF code</strong> column, a <strong>date</strong> column, and (ideally) a <strong>manufacturer</strong> column. Our AI auto-detects them and runs the full analysis. Files are kept only for the current session.
                     </div>
-                    <button class="fetch-btn" id="fetchDataBtn">
-                        <i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data
+
+                    <button class="fetch-btn" id="uploadBtn" disabled>
+                        <i class="fas fa-bolt"></i> Upload &amp; Analyze
                     </button>
-                    <!-- Fetch progress -->
-                    <div id="fetchProgress" style="display: none;">
-                        <div class="fetch-progress-bar">
-                            <div class="fp-step" id="fStep1">
-                                <div class="fp-step-icon"><i class="fas fa-download"></i></div>
-                                <div class="fp-step-label">Download</div>
-                            </div>
-                            <div class="fp-connector" id="fConn1"></div>
-                            <div class="fp-step" id="fStep2">
-                                <div class="fp-step-icon"><i class="fas fa-broom"></i></div>
-                                <div class="fp-step-label">Clean</div>
-                            </div>
-                            <div class="fp-connector" id="fConn2"></div>
-                            <div class="fp-step" id="fStep3">
-                                <div class="fp-step-icon"><i class="fas fa-code"></i></div>
-                                <div class="fp-step-label">Extract Codes</div>
-                            </div>
+                </div>
+
+                <!-- ── AI detection summary + manual override (only shown if auto-detect is incomplete or user clicks "Adjust") ── -->
+                <div id="mappingPanel" style="display:none; margin-top:18px;">
+                    <div class="section-divider"><i class="fas fa-robot"></i> AI Column Detection</div>
+                    <div id="mappingStatus" class="status info show" style="margin-bottom:12px;"></div>
+                    <div class="fetch-inputs-grid">
+                        <div class="form-group">
+                            <label for="mapImdrf"><i class="fas fa-code"></i> IMDRF Code column <span style="color:var(--error);">*</span></label>
+                            <select id="mapImdrf"></select>
                         </div>
-                        <!-- Download progress bar + counter -->
-                        <div class="fp-dl-bar-wrap" id="fpDlBarWrap">
-                            <div class="fp-dl-bar-fill" id="fpDlBarFill"></div>
+                        <div class="form-group">
+                            <label for="mapMfr"><i class="fas fa-industry"></i> Manufacturer column</label>
+                            <select id="mapMfr"></select>
                         </div>
-                        <div class="fp-dl-counter" id="fpDlCounter"></div>
+                        <div class="form-group">
+                            <label for="mapDate"><i class="fas fa-calendar-alt"></i> Date column <span style="color:var(--error);">*</span></label>
+                            <select id="mapDate"></select>
+                        </div>
                     </div>
+                    <button class="fetch-btn" id="prepareBtn" style="margin-top:14px;">
+                        <i class="fas fa-bolt"></i> Run Analysis with This Mapping
+                    </button>
+                </div>
+
+                <!-- Compact AI-detection summary shown after a successful auto-run -->
+                <div id="autoDetectSummary" class="date-hint" style="display:none; margin-top:14px; background:rgba(16,185,129,0.1); border-color:rgba(16,185,129,0.3); color:#065f46;">
+                    <i class="fas fa-robot"></i><span id="autoDetectText"></span>
+                    <a href="#" id="adjustMappingLink" style="margin-left:8px; color:var(--primary); text-decoration:underline; font-weight:500;">Adjust columns</a>
                 </div>
             </div>
 
@@ -1188,13 +1286,33 @@
         const topCodesSection = document.getElementById('topCodesSection');
         const topCodesBtn = document.getElementById('topCodesBtn');
         const topCodesChart = document.getElementById('topCodesChart');
-        const fetchDataBtn = document.getElementById('fetchDataBtn');
-        const fetchProgress = document.getElementById('fetchProgress');
         const postFetchSection = document.getElementById('postFetchSection');
-        const insightProductCode = document.getElementById('insightProductCode');
-        const insightYearFrom = document.getElementById('insightYearFrom');
-        const insightYearTo = document.getElementById('insightYearTo');
+
+        // Sheet-analyser specific
+        const uploadBtn = document.getElementById('uploadBtn');
+        const sheetFileInput = document.getElementById('sheetFileInput');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const sheetFileInfo = document.getElementById('sheetFileInfo');
+        const sheetFileName = document.getElementById('sheetFileName');
+        const sheetFileSize = document.getElementById('sheetFileSize');
+        const sheetRemoveFile = document.getElementById('sheetRemoveFile');
+        const mappingPanel = document.getElementById('mappingPanel');
+        const mappingStatus = document.getElementById('mappingStatus');
+        const mapImdrf = document.getElementById('mapImdrf');
+        const mapMfr = document.getElementById('mapMfr');
+        const mapDate = document.getElementById('mapDate');
+        const prepareBtn = document.getElementById('prepareBtn');
+        const autoDetectSummary = document.getElementById('autoDetectSummary');
+        const autoDetectText = document.getElementById('autoDetectText');
+        const adjustMappingLink = document.getElementById('adjustMappingLink');
+
+        // Stand-ins for IMDRF page globals (year range gets populated from prepared data)
         let _fetchedYearFrom = null, _fetchedYearTo = null;
+        let _uploadedFileId = null;
+        let _detectedMapping = null;
+        let _detectedHeaders = [];
+        // Stub product-code element so the existing report generator code doesn't crash
+        const insightProductCode = { value: 'CUSTOM' };
 
 
         // Level label mappings
@@ -1409,150 +1527,196 @@
             document.getElementById('reportCard').style.display = 'block';
         }
 
-        // ── Fetch button ─────────────────────────────────────────────────
-        fetchDataBtn.addEventListener('click', async () => {
-            const productCode = insightProductCode.value.trim();
-            const yearFrom = parseInt(insightYearFrom.value, 10);
-            const yearTo   = parseInt(insightYearTo.value, 10);
-
-            if (!productCode) { showStatus('❌ Please enter a product code', 'error'); return; }
-            if (!insightYearFrom.value || !insightYearTo.value) { showStatus('❌ Please enter both Year From and Year To', 'error'); return; }
-            if (isNaN(yearFrom) || yearFrom < 2000 || yearFrom > 2035) { showStatus('❌ Year From must be between 2000 and 2035', 'error'); return; }
-            if (isNaN(yearTo)   || yearTo   < 2000 || yearTo   > 2035) { showStatus('❌ Year To must be between 2000 and 2035', 'error'); return; }
-            if (yearTo < yearFrom) {
-                showStatus('❌ Year To must be equal to or greater than Year From', 'error');
-                return;
+        // ── Sheet upload + AI column detection ──────────────────────────
+        function fillSelect(sel, headers, selected, allowEmpty) {
+            sel.innerHTML = '';
+            if (allowEmpty) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = '— none —';
+                sel.appendChild(opt);
             }
+            headers.forEach(h => {
+                const opt = document.createElement('option');
+                opt.value = h;
+                opt.textContent = h;
+                if (h === selected) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
 
-            _fetchedYearFrom = yearFrom;
-            _fetchedYearTo   = yearTo;
+        function _formatBytes(n) {
+            if (n < 1024) return `${n} B`;
+            if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+            if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+            return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+        }
 
-            // Convert whole years to full-year date range for the API
-            const dateFrom = `${yearFrom}-01-01`;
-            const dateTo   = `${yearTo}-12-31`;
+        function _showFileInfo(file) {
+            sheetFileName.textContent = file.name;
+            sheetFileSize.textContent = _formatBytes(file.size);
+            sheetFileInfo.classList.add('show');
+            uploadBtn.disabled = false;
+        }
 
-            // Reset UI
-            fetchDataBtn.disabled = true;
-            fetchDataBtn.innerHTML = '<span class="spinner"></span> Fetching…';
-            fetchProgress.style.display = 'block';
+        function _clearFileInfo() {
+            sheetFileInput.value = '';
+            sheetFileInfo.classList.remove('show');
+            uploadBtn.disabled = true;
+        }
+
+        sheetFileInput.addEventListener('change', () => {
+            const f = sheetFileInput.files && sheetFileInput.files[0];
+            if (f) _showFileInfo(f); else _clearFileInfo();
+        });
+
+        sheetRemoveFile.addEventListener('click', (e) => {
+            e.stopPropagation();
+            _clearFileInfo();
+        });
+
+        ['dragenter', 'dragover'].forEach(evt =>
+            fileUploadArea.addEventListener(evt, (e) => {
+                e.preventDefault(); e.stopPropagation();
+                fileUploadArea.classList.add('dragover');
+            })
+        );
+        ['dragleave', 'drop'].forEach(evt =>
+            fileUploadArea.addEventListener(evt, (e) => {
+                e.preventDefault(); e.stopPropagation();
+                fileUploadArea.classList.remove('dragover');
+            })
+        );
+        fileUploadArea.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            if (dt && dt.files && dt.files[0]) {
+                sheetFileInput.files = dt.files;
+                _showFileInfo(dt.files[0]);
+            }
+        });
+
+        async function _runPrepare(mapping, btn, btnHtml) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Analyzing…';
+            postFetchSection.style.display = 'none';
+            resultsSection.classList.remove('show');
+            showStatus('Rewriting columns and running IMDRF analysis…', 'info');
+
+            try {
+                const resp = await fetch('/api/sheet-analyser/prepare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_id: _uploadedFileId, mapping, level: currentLevel }),
+                });
+                const data = await parseJsonResponse(resp);
+                if (!resp.ok) throw new Error(data.error || 'Preparation failed');
+
+                _fetchedYearFrom = data.year_from;
+                _fetchedYearTo   = data.year_to;
+                postFetchSection.style.display = 'block';
+                mappingPanel.style.display = 'none';
+                applyPreparedData(data);
+
+                // Show compact AI summary above the analysis
+                const am = data.applied_mapping || {};
+                const bits = [];
+                if (am.imdrf_code)   bits.push(`IMDRF Code → <strong>${am.imdrf_code}</strong>`);
+                if (am.manufacturer) bits.push(`Manufacturer → <strong>${am.manufacturer}</strong>`);
+                if (am.date_received) bits.push(`Date → <strong>${am.date_received}</strong>`);
+                autoDetectText.innerHTML = ' &nbsp;AI mapped: ' + (bits.join(' · ') || '(no columns detected)');
+                autoDetectSummary.style.display = 'block';
+                return true;
+            } catch (err) {
+                showStatus(`❌ ${err.message}`, 'error');
+                return false;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = btnHtml;
+            }
+        }
+
+        uploadBtn.addEventListener('click', async () => {
+            const file = sheetFileInput.files && sheetFileInput.files[0];
+            if (!file) { showStatus('❌ Please choose a CSV or Excel file first', 'error'); return; }
+
+            // Reset downstream UI
+            mappingPanel.style.display = 'none';
+            autoDetectSummary.style.display = 'none';
             postFetchSection.style.display = 'none';
             document.getElementById('currentCodeTableSection').style.display = 'none';
             document.getElementById('mfrAvgTableSection').style.display = 'none';
-            resetFetchSteps();
+            document.getElementById('reportCard').style.display = 'none';
             resultsSection.classList.remove('show');
             analyzeBtn.classList.remove('show');
-            prefixSelect.innerHTML = '<option value="">Select a code...</option>';
-            mfrSelect.innerHTML = '<option value="">— select a code first —</option>';
-            mfrSelect.disabled = true;
-            if (_fetchPollTimer) clearInterval(_fetchPollTimer);
-            stopFpHeartbeat();
-            _fpDisplayPct = 0;
-            setFpProgress(3, true);
-            startFpHeartbeat(14);
-            setFpCounter('');
 
-            setFetchStep(1, 'active');
-            showStatus('Fetching data from FDA MAUDE…', 'info');
+            const origHtml = '<i class="fas fa-bolt"></i> Upload &amp; Analyze';
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<span class="spinner"></span> Uploading & detecting columns…';
+            showStatus('Uploading file and detecting columns with AI…', 'info');
 
             try {
-                // Start clean pipeline (same as home section)
-                const startResp = await fetch('/api/pipeline/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_code: productCode, date_from: dateFrom, date_to: dateTo, pipeline_type: 'clean' })
-                });
-                const startData = await parseJsonResponse(startResp);
-                if (!startResp.ok) { throw new Error(startData.error || 'Failed to start pipeline'); }
+                const fd = new FormData();
+                fd.append('file', file);
+                const resp = await fetch('/api/sheet-analyser/upload', { method: 'POST', body: fd });
+                const data = await parseJsonResponse(resp);
+                if (!resp.ok) throw new Error(data.error || 'Upload failed');
 
-                _fetchJobId = startData.job_id;
+                _uploadedFileId = data.file_id;
+                _detectedHeaders = data.headers || [];
+                _detectedMapping = data.mapping || {};
 
-                // Poll status
-                _fetchPollTimer = setInterval(async () => {
-                    try {
-                        const pollResp = await fetch(`/api/pipeline/status/${_fetchJobId}`);
-                        const poll = await parseJsonResponse(pollResp);
+                // Populate the manual-override dropdowns (used only if AI fell short)
+                fillSelect(mapImdrf, _detectedHeaders, _detectedMapping.imdrf_code, false);
+                fillSelect(mapMfr, _detectedHeaders, _detectedMapping.manufacturer, true);
+                const dateGuess = _detectedMapping.date_received || _detectedMapping.event_date;
+                fillSelect(mapDate, _detectedHeaders, dateGuess, false);
 
-                        const step      = poll.step || 1;
-                        const processed = poll.processed || 0;
-                        const total     = poll.total     || 0;
-                        const scanned   = poll.scanned   || 0;
-
-                        if (step >= 1) setFetchStep(1, step > 1 ? 'done' : 'active');
-                        if (step >= 2) setFetchStep(2, step > 2 ? 'done' : 'active');
-
-                        if (poll.status === 'running') {
-                            if (step === 1) {
-                                // Update download counter + progress bar
-                                setFpCounter(buildDownloadMsg(processed, total, scanned));
-                                if (total > 0) {
-                                    const pct = Math.min(48, 5 + Math.floor((processed / total) * 43));
-                                    setFpProgress(Math.max(pct, _fpDisplayPct), true);
-                                    stopFpHeartbeat();
-                                    startFpHeartbeat(Math.min(pct + 5, 48));
-                                }
-                            } else if (step === 2) {
-                                setFpCounter('<i class="fas fa-magic" style="margin-right:6px;color:var(--primary);"></i>Cleaning &amp; processing data…');
-                                setFpProgress(Math.max(65, _fpDisplayPct), true);
-                                stopFpHeartbeat();
-                                startFpHeartbeat(88);
-                            }
-                        }
-
-                        if (poll.status === 'failed') {
-                            clearInterval(_fetchPollTimer);
-                            stopFpHeartbeat();
-                            setFpProgress(0, false);
-                            setFpCounter('');
-                            showStatus(`❌ ${poll.error || 'Pipeline failed'}`, 'error');
-                            fetchDataBtn.disabled = false;
-                            fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
-                        } else if (poll.status === 'done') {
-                            clearInterval(_fetchPollTimer);
-                            stopFpHeartbeat();
-                            setFpProgress(90, true);
-                            startFpHeartbeat(95);
-                            setFetchStep(2, 'done');
-                            setFetchStep(3, 'active');
-                            setFpCounter('<i class="fas fa-code" style="margin-right:6px;color:var(--primary);"></i>Extracting IMDRF codes…');
-                            showStatus('Extracting IMDRF codes…', 'info');
-
-                            // Prepare insights from the pipeline result
-                            const prepResp = await fetch('/api/imdrf-insights/prepare-from-pipeline', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ job_id: _fetchJobId, level: currentLevel })
-                            });
-                            const prepData = await parseJsonResponse(prepResp);
-                            if (!prepResp.ok) { throw new Error(prepData.error || 'Code extraction failed'); }
-
-                            stopFpHeartbeat();
-                            setFpProgress(100, false);
-                            setFpCounter('<i class="fas fa-check-circle" style="margin-right:6px;color:#10b981;"></i>Data ready.');
-                            postFetchSection.style.display = 'block';
-                            applyPreparedData(prepData);
-                            fetchDataBtn.disabled = false;
-                            fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
-
-                        }
-                    } catch (err) {
-                        clearInterval(_fetchPollTimer);
-                        stopFpHeartbeat();
-                        setFpProgress(0, false);
-                        setFpCounter('');
-                        showStatus(`❌ ${err.message}`, 'error');
-                        fetchDataBtn.disabled = false;
-                        fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
-                    }
-                }, 2000);
-
+                // If AI got the required columns, run the analysis immediately
+                if (_detectedMapping.imdrf_code && dateGuess) {
+                    await _runPrepare({
+                        imdrf_code: _detectedMapping.imdrf_code,
+                        manufacturer: _detectedMapping.manufacturer || null,
+                        date_received: dateGuess,
+                    }, uploadBtn, origHtml);
+                } else {
+                    // Need user input
+                    const missing = [];
+                    if (!_detectedMapping.imdrf_code) missing.push('IMDRF Code');
+                    if (!dateGuess)                   missing.push('Date');
+                    mappingStatus.innerHTML =
+                        `<i class="fas fa-exclamation-triangle" style="color:var(--warning);margin-right:6px;"></i>` +
+                        `AI couldn't auto-detect <strong>${missing.join(', ')}</strong> from your sheet's ${_detectedHeaders.length} columns. Please pick the right columns below and run the analysis.`;
+                    mappingPanel.style.display = 'block';
+                    hideStatus();
+                    uploadBtn.disabled = false;
+                    uploadBtn.innerHTML = origHtml;
+                }
             } catch (err) {
-                stopFpHeartbeat();
-                setFpProgress(0, false);
-                setFpCounter('');
                 showStatus(`❌ ${err.message}`, 'error');
-                fetchDataBtn.disabled = false;
-                fetchDataBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch &amp; Prepare Data';
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = origHtml;
             }
+        });
+
+        prepareBtn.addEventListener('click', async () => {
+            if (!_uploadedFileId) { showStatus('❌ Please upload a file first', 'error'); return; }
+            const mapping = {
+                imdrf_code: mapImdrf.value || null,
+                manufacturer: mapMfr.value || null,
+                date_received: mapDate.value || null,
+            };
+            if (!mapping.imdrf_code) { showStatus('❌ Please pick the IMDRF Code column', 'error'); return; }
+            if (!mapping.date_received) { showStatus('❌ Please pick a date column', 'error'); return; }
+            await _runPrepare(mapping, prepareBtn, '<i class="fas fa-bolt"></i> Run Analysis with This Mapping');
+        });
+
+        adjustMappingLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            mappingStatus.innerHTML =
+                `<i class="fas fa-sliders-h" style="margin-right:6px;"></i>` +
+                `Pick the right columns and re-run the analysis.`;
+            mappingPanel.style.display = 'block';
+            mappingPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
 
         // ── Manufacturer average table ────────────────────────────────────

@@ -808,6 +808,10 @@
                     <i class="fas fa-chart-line"></i>
                     <span>IMDRF Insights</span>
                 </a>
+                <a href="/sheet-analyser" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-file-import"></i>
+                    <span>Sheet Analyser</span>
+                </a>
                 <a href="/device-recall" class="nav-btn" style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-triangle-exclamation"></i>
                     <span>Device Recall</span>
@@ -933,12 +937,12 @@
                 </button>
             </div>
 
-            <!-- Audit report button (enabled after any pipeline completes) -->
+            <!-- Detailed report button (enabled after a clean/full pipeline completes) -->
             <div class="pipeline-btn-audit-wrap">
-                <button class="pipeline-btn pipeline-btn-audit" id="pipelineBtnAudit" disabled>
-                    <i class="fas fa-file-alt btn-icon"></i>
-                    <span>Download Audit Report</span>
-                    <span class="btn-label">TXT · full processing log</span>
+                <button class="pipeline-btn pipeline-btn-audit" id="pipelineBtnReport" disabled>
+                    <i class="fas fa-file-pdf btn-icon"></i>
+                    <span>Download Detailed Report</span>
+                    <span class="btn-label">PDF · PSUR-style report (includes audit log)</span>
                 </button>
             </div>
 
@@ -1001,10 +1005,13 @@
         // ── Pipeline Download ─────────────────────────────────────────
         const pipelineBtnStart   = document.getElementById('pipelineBtnStart');
         const outputOptions      = document.querySelectorAll('.output-option');
-        const pipelineBtnAudit   = document.getElementById('pipelineBtnAudit');
+        const pipelineBtnReport  = document.getElementById('pipelineBtnReport');
         const bulkDownloadStatus = document.getElementById('bulkDownloadStatus');
-        let _currentJobId   = null;
-        let _currentAuditUrl = null;
+        let _currentJobId       = null;
+        let _currentPipelineType = null;
+        let _currentProductCode  = '';
+        let _currentDateFrom     = '';
+        let _currentDateTo       = '';
         const bulkProgressBar    = document.getElementById('bulkProgressBar');
         const bulkProgressFill   = document.getElementById('bulkProgressFill');
         const pipelineStepsRow   = document.getElementById('pipelineStepsRow');
@@ -1058,9 +1065,12 @@
             pipelineBtnStart.disabled = disabled;
             outputOptions.forEach(opt => opt.classList.toggle('pipeline-disabled', disabled));
             if (disabled) {
-                pipelineBtnAudit.disabled = true;
+                pipelineBtnReport.disabled = true;
             } else {
-                pipelineBtnAudit.disabled = !_currentJobId;
+                // Detailed report needs a cleaned file → only clean/full pipelines qualify
+                const reportAvailable = !!_currentJobId
+                    && (_currentPipelineType === 'clean' || _currentPipelineType === 'full');
+                pipelineBtnReport.disabled = !reportAvailable;
             }
         }
 
@@ -1156,8 +1166,11 @@
             const pipelineType = requestedOutputs.includes('full') ? 'full'
                                : requestedOutputs.includes('clean') ? 'clean' : 'raw';
 
-            _currentJobId    = null;
-            _currentAuditUrl = null;
+            _currentJobId        = null;
+            _currentPipelineType = null;
+            _currentProductCode  = productCode;
+            _currentDateFrom     = fromDate;
+            _currentDateTo       = toDate;
             setAllBtnsDisabled(true);
             _bulkDisplayPct = 0;
             setBulkProgress(3, true);
@@ -1185,8 +1198,6 @@
 
                 const payload = await startResp.json();
                 const statusUrl  = payload.status_url;
-                const auditUrl   = payload.audit_url;
-                _currentAuditUrl = auditUrl;
 
                 showBulkStatus('<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Fetching data from openFDA…', 'info');
                 setBulkProgress(Math.max(_bulkDisplayPct, 8), true);
@@ -1293,7 +1304,8 @@
                                 `<i class="fas fa-check-circle" style="margin-right:8px;color:#10b981;"></i>` +
                                 `<strong>${requestedOutputs.length} ${fileWord}</strong> downloaded successfully!`,
                                 'success');
-                            _currentJobId = payload.job_id;
+                            _currentJobId        = payload.job_id;
+                            _currentPipelineType = pipelineType;
                             setAllBtnsDisabled(false);
                             return;
                         }
@@ -1341,35 +1353,82 @@
             startPipelineDownload(selected);
         });
 
-        // ── Audit Report Download ─────────────────────────────────────────
-        pipelineBtnAudit.addEventListener('click', async () => {
+        // ── Detailed Report Download ──────────────────────────────────────
+        pipelineBtnReport.addEventListener('click', async () => {
             if (!_currentJobId) return;
-            pipelineBtnAudit.disabled = true;
+            const origHTML = pipelineBtnReport.innerHTML;
+            pipelineBtnReport.disabled = true;
+            pipelineBtnReport.innerHTML =
+                '<i class="fas fa-spinner fa-spin btn-icon"></i>' +
+                '<span>Generating Detailed Report…</span>' +
+                '<span class="btn-label">This may take ~20 seconds</span>';
+            showBulkStatus(
+                '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>' +
+                'Preparing IMDRF data for detailed report…',
+                'info');
+
             try {
-                const resp = await fetch(_currentAuditUrl || `/api/pipeline/audit/${_currentJobId}`);
-                if (!resp.ok) {
-                    const errData = await resp.json().catch(() => ({}));
-                    throw new Error(errData.error || 'Could not generate audit report.');
+                // Step 1: prepare insights data from the completed pipeline job
+                const prepResp = await fetch('/api/imdrf-insights/prepare-from-pipeline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: _currentJobId, level: 1 })
+                });
+                if (!prepResp.ok) {
+                    const errData = await prepResp.json().catch(() => ({}));
+                    throw new Error(errData.error || 'Could not prepare IMDRF data.');
                 }
-                const blob   = await resp.blob();
+                const prepData = await prepResp.json();
+
+                // Step 2: generate the detailed PDF report
+                showBulkStatus(
+                    '<i class="fas fa-file-pdf" style="margin-right:8px;"></i>' +
+                    'Generating PDF report…',
+                    'info');
+
+                const yearFrom = parseInt(_currentDateFrom.slice(0, 4), 10);
+                const yearTo   = parseInt(_currentDateTo.slice(0, 4), 10);
+
+                const pdfResp = await fetch('/api/imdrf-insights/generate-detailed-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_id:      prepData.file_id,
+                        year_from:    yearFrom,
+                        year_to:      yearTo,
+                        level:        1,
+                        product_code: _currentProductCode,
+                        date_from:    _currentDateFrom,
+                        date_to:      _currentDateTo,
+                    })
+                });
+                if (!pdfResp.ok) {
+                    const errData = await pdfResp.json().catch(() => ({}));
+                    throw new Error(errData.error || 'Could not generate detailed report.');
+                }
+
+                const blob   = await pdfResp.blob();
                 const objUrl = window.URL.createObjectURL(blob);
                 const a      = document.createElement('a');
                 a.href = objUrl;
-                const cd = resp.headers.get('Content-Disposition') || '';
-                const fnMatch = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-                a.download = fnMatch
-                    ? fnMatch[1].replace(/['"]/g, '')
-                    : `audit_report_${_currentJobId}.txt`;
+                a.download = `IMDRF_Detailed_Report_${_currentProductCode}_${yearFrom}_${yearTo}.pdf`;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
                 window.URL.revokeObjectURL(objUrl);
+
+                showBulkStatus(
+                    '<i class="fas fa-check-circle" style="margin-right:8px;color:#10b981;"></i>' +
+                    'Detailed report downloaded successfully!',
+                    'success');
             } catch (e) {
                 showBulkStatus(
                     `<i class="fas fa-exclamation-circle" style="margin-right:8px;"></i>${e.message}`,
                     'error');
             } finally {
-                pipelineBtnAudit.disabled = false;
+                pipelineBtnReport.innerHTML = origHTML;
+                pipelineBtnReport.disabled = false;
+                setAllBtnsDisabled(false);
             }
         });
     </script>

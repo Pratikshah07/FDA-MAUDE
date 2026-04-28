@@ -418,6 +418,14 @@ def forgot_password():
 @login_required
 def logout():
     """Logout user and clear Firebase session."""
+    # Drop any sheet-analyser uploads (session-only, per user request)
+    for p in session.get('sheet_files', []):
+        try:
+            if p and os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
+    session.pop('sheet_files', None)
     logout_user()
     session.pop('firebase_user', None)
     return redirect(url_for('login'))
@@ -678,7 +686,12 @@ def api_prepare_insights_from_pipeline():
     if job.get('status') != 'done':
         return jsonify({'error': 'Pipeline job is not complete yet'}), 409
 
-    cleaned_path = job.get('output_path')
+    # Prefer the dedicated cleaned-MAUDE path (set for 'full' pipelines);
+    # fall back to output_path for 'clean' pipelines where it IS the cleaned XLSX.
+    cleaned_path = job.get('clean_output_path')
+    if not cleaned_path or not os.path.exists(cleaned_path):
+        if job.get('pipeline_type') == 'clean':
+            cleaned_path = job.get('output_path')
     if not cleaned_path or not os.path.exists(cleaned_path):
         return jsonify({'error': 'Cleaned file not found for this job'}), 404
 
@@ -709,6 +722,153 @@ def api_prepare_insights_from_pipeline():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+
+# ── Sheet Analyser ─────────────────────────────────────────────────────
+# Generic upload page that accepts any MAUDE-like CSV/XLSX, uses Groq to
+# detect column roles, then rewrites the file with canonical column names
+# so the existing IMDRF Insights endpoints (refresh / analyze / reports /
+# downloads) can consume it unchanged via the shared 'insights_file_*'
+# session key.
+
+@app.route('/sheet-analyser')
+@login_required
+def sheet_analyser_page():
+    return render_template('sheet_analyser.html', user=current_user)
+
+
+@app.route('/api/sheet-analyser/upload', methods=['POST'])
+@login_required
+def api_sheet_analyser_upload():
+    """Save the uploaded sheet, run AI column detection, return suggested mapping."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'error': 'No file selected'}), 400
+
+    ext = os.path.splitext(f.filename.lower())[1]
+    if ext not in {'.csv', '.xlsx', '.xls'}:
+        return jsonify({'error': 'Invalid file type. Please upload CSV, XLS, or XLSX.'}), 400
+
+    safe_name = secure_filename(f.filename)
+    file_id = f"{current_user.id}_{os.urandom(8).hex()}"
+    raw_path = os.path.join(app.config['UPLOAD_FOLDER'], f"sheet_{file_id}_raw_{safe_name}")
+    f.save(raw_path)
+
+    try:
+        from backend.sheet_analyser import ai_map_columns  # lazy import
+        info = ai_map_columns(raw_path)
+    except Exception as e:
+        try:
+            os.remove(raw_path)
+        except Exception:
+            pass
+        return jsonify({'error': f'Could not read file: {e}'}), 400
+
+    # Track for session-only cleanup on logout
+    sheet_files = session.get('sheet_files', [])
+    sheet_files.append(raw_path)
+    session['sheet_files'] = sheet_files
+
+    # Stash raw path so /prepare can find it
+    session[f'sheet_raw_{file_id}'] = raw_path
+
+    return jsonify({
+        'success': True,
+        'file_id': file_id,
+        'headers': info['headers'],
+        'sample': info['sample'],
+        'mapping': info['mapping'],
+    }), 200
+
+
+@app.route('/api/sheet-analyser/prepare', methods=['POST'])
+@login_required
+def api_sheet_analyser_prepare():
+    """Apply (possibly user-corrected) column mapping, rewrite as canonical CSV,
+    then run prepare_data_for_insights so the IMDRF endpoints can take over."""
+    data = request.get_json() or {}
+    file_id = data.get('file_id')
+    mapping = data.get('mapping') or {}
+    level = int(data.get('level', 1))
+
+    if not file_id:
+        return jsonify({'error': 'Missing file_id'}), 400
+    if level not in [1, 2, 3]:
+        return jsonify({'error': 'Invalid level. Must be 1, 2, or 3.'}), 400
+
+    raw_path = session.get(f'sheet_raw_{file_id}')
+    if not raw_path or not os.path.exists(raw_path):
+        return jsonify({'error': 'Uploaded file not found. Please upload again.'}), 404
+
+    canonical_path = os.path.join(app.config['UPLOAD_FOLDER'], f"sheet_{file_id}_canonical.csv")
+    try:
+        from backend.sheet_analyser import rewrite_canonical
+        from backend.imdrf_insights import prepare_data_for_insights
+        rewrite_info = rewrite_canonical(raw_path, mapping, canonical_path)
+        result = prepare_data_for_insights(canonical_path, level=level, annex_file_path=DEFAULT_IMDRF_PATH)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+    # 1-year minimum date span (same rule as the IMDRF page)
+    valid_dates = result['df_exploded']['parsed_date'].dropna()
+    if len(valid_dates) > 0:
+        date_span = (valid_dates.max() - valid_dates.min()).days
+        if date_span < 365:
+            try:
+                os.remove(canonical_path)
+            except Exception:
+                pass
+            return jsonify({
+                'error': f'Uploaded file only contains {date_span} days of data '
+                         f'({valid_dates.min().strftime("%Y-%m-%d")} to {valid_dates.max().strftime("%Y-%m-%d")}). '
+                         f'At least 1 year (365 days) is required for meaningful trend analysis.'
+            }), 400
+
+    # Track canonical file for cleanup
+    sheet_files = session.get('sheet_files', [])
+    if canonical_path not in sheet_files:
+        sheet_files.append(canonical_path)
+        session['sheet_files'] = sheet_files
+
+    # Reuse the IMDRF insights session key so all downstream endpoints work as-is
+    session[f'insights_file_{file_id}'] = {
+        'path': canonical_path,
+        'merge_log': result.get('merge_log', []),
+        'sheet_analyser': True,
+    }
+
+    # Year span (used by Top-5 yearly chart + report year range)
+    year_from = int(valid_dates.min().year) if len(valid_dates) > 0 else None
+    year_to = int(valid_dates.max().year) if len(valid_dates) > 0 else None
+
+    return jsonify({
+        'success': True,
+        'file_id': file_id,
+        'all_prefixes': result['all_prefixes'],
+        'all_manufacturers': result['all_manufacturers'],
+        'prefix_counts': result.get('prefix_counts', {}),
+        'total_rows': result['total_rows'],
+        'rows_with_imdrf': result['rows_with_imdrf'],
+        'rows_with_dates': result['rows_with_dates'],
+        'level': level,
+        'level_label': result.get('level_label', f'Level-{level}'),
+        'applied_mapping': rewrite_info['applied_mapping'],
+        'year_from': year_from,
+        'year_to': year_to,
+    }), 200
+
+
+def _cleanup_sheet_files():
+    """Delete every uploaded/canonical sheet for the current session."""
+    for p in session.get('sheet_files', []):
+        try:
+            if p and os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
+    session.pop('sheet_files', None)
 
 
 @app.route('/api/imdrf-insights/refresh', methods=['POST'])
@@ -3255,13 +3415,9 @@ def api_pipeline_start():
             except Exception:
                 pass
 
-            if 'clean' in requested_outputs:
-                _set_pipeline_status(job_id, clean_output_path=cleaned_path, user_id=job_user_id)
-            else:
-                try:
-                    os.remove(cleaned_path)
-                except Exception:
-                    pass
+            # Always retain the cleaned file so the Detailed Report can use it later,
+            # regardless of whether the user requested the cleaned XLSX download.
+            _set_pipeline_status(job_id, clean_output_path=cleaned_path, user_id=job_user_id)
 
             wb = Workbook()
             ws = wb.active
